@@ -1,0 +1,10 @@
+build/
+out/
+referee-src/
+arena/logs/
+arena/battle_logs/
+league/bots/
+kaggle/
+data/
+__pycache__/
+.DS_Store
