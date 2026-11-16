@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SnakeByte Bot Walkthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* layout: fixed contents rail on the left, one reading column, code and diagrams may run wider */
+  --bg: #f3f6f8;
+  --panel: #ffffff;
+  --ink: #17232b;
+  --muted: #5a6b76;
+  --line: #d5dee4;
+  --snake: #0d7f6c;      /* accent: the snake */
+  --apple: #c8402f;      /* second accent: apples, costs, losses */
+  --code-bg: #e9eef2;
+  --wall: #7b8a94;
+  --display: "Bricolage Grotesque", "IBM Plex Sans", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0f171c; --panel: #162129; --ink: #e3ebef; --muted: #93a4ae; --line: #2a3a44;
+    --snake: #3fc7ad; --apple: #f0705c; --code-bg: #1c2a33; --wall: #6f808b;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f171c; --panel: #162129; --ink: #e3ebef; --muted: #93a4ae; --line: #2a3a44;
+  --snake: #3fc7ad; --apple: #f0705c; --code-bg: #1c2a33; --wall: #6f808b;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.6 var(--body); }
+.shell { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 40px; max-width: 1180px; margin: 0 auto; padding: 32px 20px 80px; }
+nav { position: sticky; top: 20px; align-self: start; max-height: calc(100vh - 40px); overflow: auto; font-size: 14px; }
+nav .brand { font: 700 18px/1.2 var(--display); margin-bottom: 14px; }
+nav ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+nav a { display: block; padding: 5px 10px; border-left: 2px solid var(--line); color: var(--muted); text-decoration: none; }
+nav a:hover, nav a:focus-visible { color: var(--ink); border-left-color: var(--snake); outline: none; }
+nav .sub a { padding-left: 22px; font-size: 13px; }
+main { min-width: 0; }
+header.top { border-bottom: 1px solid var(--line); padding-bottom: 22px; margin-bottom: 8px; }
+h1 { font: 700 clamp(30px, 5vw, 44px)/1.08 var(--display); margin: 0 0 12px; text-wrap: balance; letter-spacing: -0.01em; }
+.lede { font-size: 18px; color: var(--muted); max-width: 66ch; margin: 0; }
+h2 { font: 700 27px/1.15 var(--display); margin: 56px 0 10px; padding-top: 10px; text-wrap: balance; }
+h3 { font: 600 18px/1.3 var(--body); margin: 34px 0 6px; }
+h3 code { font-size: 16px; }
+p, ul, ol.steps { max-width: 68ch; }
+p { margin: 10px 0; }
+ul, ol.steps { padding-left: 22px; margin: 10px 0; }
+li { margin: 4px 0; }
+a { color: var(--snake); }
+code { font: 14px var(--mono); background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+pre { font: 13px/1.55 var(--mono); background: var(--code-bg); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; overflow-x: auto; margin: 14px 0; tab-size: 4; }
+pre code { background: none; padding: 0; font-size: inherit; }
+pre .c { color: var(--muted); }
+pre .k { color: var(--snake); font-weight: 600; }
+pre .r { color: var(--apple); font-weight: 600; }
+.wide { overflow-x: auto; margin: 14px 0; }
+table { border-collapse: collapse; font-size: 14.5px; width: 100%; }
+th, td { text-align: left; padding: 7px 12px 7px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 600; color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; padding-right: 16px; white-space: nowrap; }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 22px 0 6px; }
+.stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.stat b { display: block; font: 700 26px/1.1 var(--display); font-variant-numeric: tabular-nums; }
+.stat span { font-size: 13px; color: var(--muted); }
+.note { border-left: 3px solid var(--snake); background: var(--panel); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; max-width: 68ch; }
+.note.warn { border-left-color: var(--apple); }
+.note b { font-weight: 600; }
+figure { margin: 18px 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; overflow-x: auto; }
+figcaption { font-size: 13.5px; color: var(--muted); margin-top: 10px; max-width: 68ch; }
+svg { max-width: 100%; height: auto; display: block; }
+svg text { font-family: var(--mono); font-size: 11px; fill: var(--ink); }
+svg .mut { fill: var(--muted); }
+.bars { display: grid; grid-template-columns: 90px 1fr 54px; gap: 6px 10px; align-items: center; font-size: 14px; max-width: 560px; }
+.bars .bar { height: 14px; background: var(--snake); border-radius: 3px; }
+.bars .bar.b2 { background: var(--wall); }
+.bars .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--muted); }
+.fn { display: grid; grid-template-columns: minmax(170px, 230px) 1fr; gap: 4px 18px; margin: 12px 0; font-size: 15px; }
+.fn dt { font: 13.5px var(--mono); color: var(--snake); padding-top: 2px; overflow-wrap: anywhere; }
+.fn dd { margin: 0 0 8px; }
+@media (max-width: 860px) {
+  .shell { grid-template-columns: 1fr; gap: 16px; }
+  nav { position: static; max-height: none; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+  nav ol { flex-direction: row; flex-wrap: wrap; }
+  nav .sub { display: none; }
+  nav a { border-left: none; padding: 4px 8px; }
+  .fn { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="shell">
+<nav aria-label="Contents">
+  <div class="brand">SnakeByte bot</div>
+  <ol>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#rules">The rules that matter</a></li>
+    <li><a href="#board">Board</a></li>
+    <li><a href="#snake">Snake and state</a></li>
+    <li><a href="#step">One turn: step</a></li>
+    <li><a href="#falls">Falls</a></li>
+    <li class="sub"><a href="#falls-sup">Support counters</a></li>
+    <li class="sub"><a href="#falls-fast">fastFalls</a></li>
+    <li><a href="#exact">Proving it exact</a></li>
+    <li><a href="#search">Search: Smitsimax</a></li>
+    <li class="sub"><a href="#select">Selection</a></li>
+    <li class="sub"><a href="#loop">The loop</a></li>
+    <li><a href="#eval">Evaluation</a></li>
+    <li class="sub"><a href="#gravity">Gravity distances</a></li>
+    <li class="sub"><a href="#credit">Per-snake credit</a></li>
+    <li><a href="#protocol">Protocol and resync</a></li>
+    <li><a href="#speed">Speed</a></li>
+    <li><a href="#tools">Local tools</a></li>
+    <li><a href="#failed">What did not work</a></li>
+    <li><a href="#reference">Function reference</a></li>
+  </ol>
+</nav>
+<main>
+<header class="top">
+  <h1>How the SnakeByte bot works, piece by piece</h1>
+  <p class="lede">A walk through <code>bot.cpp</code> as of v1.1: the simulator, the search, the evaluation and the tricks that make each one fast, with the numbers measured along the way.</p>
+</header>
+
+<section id="overview">
+<div class="stats">
+  <div class="stat"><b>328 → 18</b><span>Legend rank, legacy bot → v1.1 (at 57% of its arena run)</span></div>
+  <div class="stat"><b>29.56</b><span>arena score, from 17.91</span></div>
+  <div class="stat"><b>46k–73k</b><span>simulated turns per 44 ms turn on CodinGame</span></div>
+  <div class="stat"><b>0</b><span>simulator mismatches in every checked game</span></div>
+</div>
+<p>The bot is one C++ file of about 900 lines. It has four parts, and this page follows them in the order the data flows:</p>
+<figure>
+<svg viewBox="0 0 760 120" role="img" aria-label="Pipeline: input, state, search, output">
+  <g fill="none" stroke="var(--line)" stroke-width="1.5">
+    <rect x="4" y="30" width="150" height="60" rx="8" fill="var(--bg)"/>
+    <rect x="204" y="30" width="150" height="60" rx="8" fill="var(--bg)"/>
+    <rect x="404" y="30" width="150" height="60" rx="8" fill="var(--bg)"/>
+    <rect x="604" y="30" width="150" height="60" rx="8" fill="var(--bg)"/>
+  </g>
+  <g stroke="var(--snake)" stroke-width="2" fill="var(--snake)">
+    <path d="M158 60 H196" /><path d="M196 60 l-7 -4 v8 z"/>
+    <path d="M358 60 H396" /><path d="M396 60 l-7 -4 v8 z"/>
+    <path d="M558 60 H596" /><path d="M596 60 l-7 -4 v8 z"/>
+  </g>
+  <text x="79" y="56" text-anchor="middle">protocol</text><text x="79" y="72" text-anchor="middle" class="mut">parse + resync</text>
+  <text x="279" y="56" text-anchor="middle">State</text><text x="279" y="72" text-anchor="middle" class="mut">board + 8 snakes</text>
+  <text x="479" y="56" text-anchor="middle">search</text><text x="479" y="72" text-anchor="middle" class="mut">step() + evaluate()</text>
+  <text x="679" y="56" text-anchor="middle">output</text><text x="679" y="72" text-anchor="middle" class="mut">"0 UP;1 LEFT"</text>
+  <text x="479" y="108" text-anchor="middle" class="mut">≈ 7,000 iterations × depth 11–14 per turn</text>
+</svg>
+<figcaption>Each turn the input is parsed into a <code>State</code>, checked against what the simulator predicted, searched for 44 ms, and answered with one direction per snake.</figcaption>
+</figure>
+</section>
+
+<section id="rules">
+<h2>The rules that matter</h2>
+<p>Two players, up to four snakes each, on a side-view grid of platforms. Every snake moves one cell per turn, all at once, and gravity pulls down any snake that rests on nothing. The longest total body wins. Several rules are only visible in the referee's Java source, and the simulator has to get every one of them right:</p>
+<ul>
+  <li><b>Order within a turn:</b> all moves, then eats, then beheadings, then falls.</li>
+  <li><b>The tail moves first.</b> A cell a tail just left is free, unless that snake ate this turn (then the tail stays).</li>
+  <li><b>Eating comes before beheading.</b> Two heads entering the same apple both grow, then both lose their head.</li>
+  <li><b>Three parts or fewer</b> (counted with the new head) and a collision removes the whole snake. A longer one only loses the head.</li>
+  <li><b>The facing is not stored.</b> It is head minus neck, recomputed every turn. A backward command is ignored.</li>
+  <li><b>Outside the grid is empty space,</b> not wall. A snake dies out there only when every part is at <code>y ≥ height + 1</code>, and only right after a fall step.</li>
+  <li><b>Ties</b> are broken by "losses", the parts lost to beheadings and collision deaths.</li>
+</ul>
+</section>
+
+<section id="board">
+<h2>Board: a 64 × 48 byte array</h2>
+<p>The grid is at most 44 × 24, but snakes may hang off its edges, so the model adds room around it: 10 columns left, 8 rows on top, and the rest to the right and below. One byte per cell.</p>
+<figure>
+<svg viewBox="0 0 700 330" role="img" aria-label="The 64 by 48 model with the real grid inside">
+  <rect x="30" y="20" width="512" height="288" fill="var(--bg)" stroke="var(--apple)" stroke-width="3"/>
+  <rect x="110" y="68" width="352" height="144" fill="var(--panel)" stroke="var(--snake)" stroke-width="2"/>
+  <rect x="110" y="206" width="352" height="6" fill="var(--wall)"/>
+  <rect x="170" y="150" width="56" height="6" fill="var(--wall)"/><rect x="330" y="120" width="72" height="6" fill="var(--wall)"/>
+  <circle cx="250" cy="110" r="4" fill="var(--apple)"/><circle cx="366" cy="96" r="4" fill="var(--apple)"/>
+  <path d="M198 147 v-24 h-16" fill="none" stroke="var(--snake)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="286" y="62" text-anchor="middle">real grid, up to 44 × 24</text>
+  <text x="286" y="228" text-anchor="middle" class="mut">bottom row is always wall</text>
+  <text x="36" y="36" class="mut">VOID ring (1 cell)</text>
+  <text x="70" y="140" text-anchor="middle" class="mut">10 cols</text>
+  <text x="286" y="44" text-anchor="middle" class="mut">8 rows</text>
+  <text x="286" y="268" text-anchor="middle" class="mut">15+ rows: room to fall out</text>
+  <text x="560" y="60">cell = (y+8)·64 + (x+10)</text>
+  <text x="560" y="84">up    −64</text><text x="560" y="100">right  +1</text><text x="560" y="116">down  +64</text><text x="560" y="132">left   −1</text>
+  <text x="560" y="164">x = (cell &amp; 63) − 10</text><text x="560" y="180">y = (cell >> 6) − 8</text>
+</svg>
+<figcaption>A stride of 64 turns "which row" into a shift and "one cell down" into +64. The red outer ring is <code>VOID</code>.</figcaption>
+</figure>
+<div class="wide"><table>
+<thead><tr><th>Value</th><th>Name</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td class="num">0</td><td><code>EMPTY</code></td><td>free</td></tr>
+<tr><td class="num">1</td><td><code>APPLE</code></td><td>power source: solid for falls, eaten by a head</td></tr>
+<tr><td class="num">2</td><td><code>WALL</code></td><td>platform</td></tr>
+<tr><td class="num">3</td><td><code>VOID</code></td><td>edge of the model: a head that enters it is beheaded, nothing rests on it</td></tr>
+<tr><td class="num">4 + i</td><td><code>SNAKE + i</code></td><td>a body part of snake i</td></tr>
+</tbody></table></div>
+<p>The order of the values is chosen so the two hot tests are one comparison each:</p>
+<pre><code>occ[c] >= WALL      <span class="c">// a head here collides: wall, void or any body</span>
+occ[c] <  WALL      <span class="c">// free to enter: empty or apple</span></code></pre>
+<div class="note"><b>Why a ring of VOID.</b> With it, no move and no fall ever needs a bounds check: any step off the model lands on a cell that already says "stop". It is the one place the model differs from the game, where a snake could wander more than 9 columns outside the grid. The search never wants to, and no opponent has in a checked game.</div>
+</section>
+
+<section id="snake">
+<h2>Snake and state</h2>
+<h3><code>struct Snake</code>: a ring buffer</h3>
+<pre><code><span class="k">struct</span> Snake {
+    uint16_t b[128];              <span class="c">// cells; b[h] is the head</span>
+    uint8_t h, len, alive, sup;   <span class="c">// sup: parts with a wall or an apple right below</span>
+    uint8_t f;                    <span class="c">// facing: 0 up, 1 right, 2 down, 3 left</span>
+    int head()      { <span class="k">return</span> b[h]; }
+    int part(int i) { <span class="k">return</span> b[(h - i) & 127]; }        <span class="c">// 0 = head</span>
+    int tail()      { <span class="k">return</span> b[(h - len + 1) & 127]; }
+};</code></pre>
+<figure>
+<svg viewBox="0 0 640 96" role="img" aria-label="Ring buffer of a snake">
+  <g stroke="var(--line)" fill="var(--bg)">
+    <rect x="20" y="24" width="60" height="34"/><rect x="80" y="24" width="60" height="34"/>
+    <rect x="140" y="24" width="60" height="34" fill="var(--code-bg)"/><rect x="200" y="24" width="60" height="34" fill="var(--code-bg)"/>
+    <rect x="260" y="24" width="60" height="34" fill="var(--code-bg)"/><rect x="320" y="24" width="60" height="34" fill="var(--code-bg)" stroke="var(--snake)" stroke-width="2.5"/>
+    <rect x="380" y="24" width="60" height="34"/><rect x="440" y="24" width="60" height="34"/><rect x="500" y="24" width="60" height="34"/>
+  </g>
+  <text x="170" y="46" text-anchor="middle">tail</text><text x="230" y="46" text-anchor="middle">…</text><text x="290" y="46" text-anchor="middle">neck</text><text x="350" y="46" text-anchor="middle">head</text>
+  <text x="350" y="76" text-anchor="middle" class="mut">b[h]</text><text x="170" y="76" text-anchor="middle" class="mut">b[h−len+1]</text>
+  <text x="410" y="16" text-anchor="middle" class="mut">move: h++, write</text>
+  <text x="170" y="16" text-anchor="middle" class="mut">no apple: len−−</text>
+  <text x="590" y="46" class="mut">wraps (&amp;127)</text>
+</svg>
+<figcaption>Advancing the head is one store. Dropping the tail is a decrement: nothing is shifted.</figcaption>
+</figure>
+<p>The facing <code>f</code> is cached instead of recomputed from head minus neck on every selection. It is written when a head advances. A beheaded snake does not advance, so it keeps the old value, which is exactly "old head minus old neck": the referee's rule, for free.</p>
+
+<h3><code>struct State</code></h3>
+<pre><code><span class="k">struct</span> State {
+    uint8_t occ[3072];     <span class="c">// the board</span>
+    Snake s[8];            <span class="c">// player 0's snakes first, then player 1's</span>
+    int napples, turn;
+    int losses[2];         <span class="c">// the tie-break</span>
+    int len[2], alive[2];  <span class="c">// total body parts and live snakes per player</span>
+};                         <span class="c">// 5,200 bytes</span></code></pre>
+<p><code>len</code>, <code>alive</code> and <code>napples</code> are updated in place by every move, so the end-of-game test and the score cost nothing:</p>
+<pre><code>bool terminal() { <span class="k">return</span> napples == 0 || alive[0] == 0 || alive[1] == 0 || turn >= 200; }</code></pre>
+<p>A whole state is copied once per search iteration. At 5.2 kB that copy is 1–2% of the search time, so the state was kept simple instead of adding undo logic.</p>
+</section>
+
+<section id="step">
+<h2>One turn: <code>State::step</code></h2>
+<p>Three passes over the snakes, in the referee's order.</p>
+<h3>Pass 1: move, and release the tail</h3>
+<pre><code><span class="k">for</span> each live snake i:
+    nh[i]  = head + DELTA[mv[i]];
+    eat[i] = occ[nh[i]] == APPLE;
+    <span class="k">if</span> (!eat[i]) {
+        t = tail;
+        sup -= (occ[t + 64] is WALL or APPLE);   <span class="c">// the tail was resting on something</span>
+        occ[t] = EMPTY;  len--;
+    }</code></pre>
+<p>Tails are cleared before any collision test. That one ordering gives the rule "a cell a tail just left is free" with no special case, including a snake chasing its own tail.</p>
+<h3>Pass 2: who collides</h3>
+<pre><code>col[i] = occ[nh[i]] >= WALL;                     <span class="c">// wall, void, any body (own included)</span>
+<span class="k">for</span> j != i:  <span class="k">if</span> (nh[j] == nh[i]) col[i] = true;   <span class="c">// two heads, same cell</span></code></pre>
+<p>All collisions are decided on the same picture of the board, before any new head is written, because the referee resolves them simultaneously. Other snakes' old heads are still in <code>occ</code>: they are necks now, and still solid.</p>
+<h3>Pass 3: apply</h3>
+<pre><code><span class="k">if</span> (!col[i]) {                       <span class="c">// normal move</span>
+    h = (h + 1) & 127;  b[h] = nh[i];  f = mv[i];  len++;
+    occ[nh[i]] = SNAKE + i;
+    <span class="k">if</span> (eat[i]) napples--, len[owner]++, unsupport(nh[i]);
+    sup += (occ[nh[i] + 64] is WALL or APPLE);
+} <span class="k">else</span> {
+    <span class="k">if</span> (occ[nh[i]] == APPLE) remove the apple;        <span class="c">// eaten by every head on it</span>
+    size = len + 1;                                  <span class="c">// with the new head</span>
+    <span class="k">if</span> (size <= 3) <span class="r">die</span>: clear the body, losses += size;
+    <span class="k">else</span>           <span class="r">behead</span>: losses += 1;             <span class="c">// nothing to undo: the head was never written</span>
+}</code></pre>
+<div class="note"><b>The beheading costs nothing.</b> The new head is only written for snakes that survive. A beheaded snake "moved forward and lost its head", which leaves it exactly where pass 1 left it: the old body, one tail cell shorter.</div>
+</section>
+
+<section id="falls">
+<h2>Falls</h2>
+<p>The referee's rule: a snake is grounded if any part is directly above a wall, an apple or a grounded snake. Every other snake drops one row, together, and the test repeats. That loop is in the source as <code>falls()</code>, kept as the reference. It was <b>47% of the search time</b>, because falling is not rare: a snake climbing straight up falls back one row every single turn.</p>
+<figure>
+<pre style="margin:0;border:none;background:none;padding:0"><code>turn t          after the move       after the fall
+  .               H                    .
+  H               x                    H
+  x               x                    x
+  x               .   &lt;- tail left     x
+ ###             ###                  ###</code></pre>
+<figcaption>A vertical snake that moves up lifts its tail off the ground, has nothing under it, and drops back. Its head never rises above its own length.</figcaption>
+</figure>
+
+<h3 id="falls-sup">Trick 1: support counters</h3>
+<p><code>sup</code> counts the parts of a snake that have a wall or an apple directly below. Three events change it, and <code>step</code> handles all three as it goes:</p>
+<ul>
+  <li>the tail leaves a cell above a wall or apple: −1</li>
+  <li>the head arrives above one: +1</li>
+  <li>an apple is eaten: the part sitting on it, of whichever snake, loses its support (<code>unsupport</code>): −1</li>
+</ul>
+<pre><code>unsigned air = 0;
+<span class="k">for</span> each live snake i:  <span class="k">if</span> (!s[i].sup) air |= 1 << i;
+<span class="k">if</span> (air) fastFalls(air);        <span class="c">// usually skipped for most snakes</span></code></pre>
+<p>If every snake has <code>sup &gt; 0</code>, nothing can fall and the turn is done. Otherwise only the snakes in <code>air</code> are looked at.</p>
+
+<h3 id="falls-fast">Trick 2: <code>fastFalls</code>, drop straight to the landing row</h3>
+<p>Snakes in the air fall in lockstep, so they never block one another. That means the drop of one airborne snake is simply the distance to the first cell, under any of its parts, that is neither empty nor part of another airborne snake.</p>
+<pre><code><span class="k">for</span> (;;) {
+    <span class="k">for</span> each snake i in air:
+        d[i] = min over its parts of (free cells straight below);
+               <span class="c">// a part with its own body right below is skipped: the lower part decides</span>
+        <span class="k">if</span> (d[i] == 0) { air -= i;  restart; }   <span class="c">// rests on a grounded snake: it is ground now</span>
+        lim[i] = rows until all of it is below the grid;
+    m = smallest d[i] or lim[i];
+    clear all airborne snakes from occ;
+    shift each by m rows;   those with lim[i] == m are <span class="r">out of the game</span>;
+    write them back;
+    those with d[i] == m have landed: recount sup, air -= i;
+    <span class="k">if</span> (!air) <span class="k">return</span>;
+}</code></pre>
+<p>Compared with the reference loop, which rescans all eight snakes for every single row of every fall, this touches only the airborne snakes and usually runs once.</p>
+<div class="note"><b>Why "restart" on a drop of 0.</b> A snake resting on a snake that is itself in the air must fall with it. A snake resting on a grounded one is grounded. Removing it from <code>air</code> changes what counts as transparent for the others, so they are measured again.</div>
+</section>
+
+<section id="exact">
+<h2>Proving it exact</h2>
+<h3>Fast code against reference code</h3>
+<p>Build the bot and the referee twice, once with <code>-DSLOWFALL</code> (the referee's loop, no shortcuts). With a fixed number of iterations and fixed seeds the search is deterministic, so both builds must play the same games move for move. 80 games with 8 snakes each: identical results. The same test covered the support counters and the cached facing.</p>
+<h3>The simulator against CodinGame: <code>resync</code></h3>
+<p>The input never says what the opponent played. Each turn the bot takes the previous position, its own moves, and tries every combination of opponent moves, three per snake, at most 81:</p>
+<pre><code><span class="k">for</span> each combination c:
+    State t = prevS;
+    t.step(my moves + combination c);
+    <span class="k">if</span> (sameState(t, cur)) {             <span class="c">// every body, cell for cell, and the apple count</span>
+        cur.losses = t.losses;           <span class="c">// losses are not in the input either</span>
+        playedMv = these moves;
+        <span class="k">return</span> true;
+    }
+<span class="k">return</span> false;                            <span class="c">// the simulator disagrees with the game</span></code></pre>
+<p>One pass does three jobs: it proves the simulator matched the referee on that turn, it recovers the opponent's moves, and it carries the tie-break counters forward. A failure is counted in stderr and tagged <code>DS</code> on a move, which shows in arena battle logs where stderr is not kept. Result so far: 0 failures.</p>
+</section>
+
+<section id="search">
+<h2>Search: Smitsimax</h2>
+<p>Eight snakes moving at once is 3⁸ = 6,561 joint moves per turn, too many for a normal tree. Smitsimax gives <b>each snake its own tree over its own moves</b> and runs them all in one shared simulation.</p>
+<figure>
+<svg viewBox="0 0 720 210" role="img" aria-label="One tree per snake, one shared simulation">
+  <g font-size="11">
+  <g transform="translate(40,0)"><text x="50" y="16" text-anchor="middle">snake 0</text>
+    <g stroke="var(--line)" stroke-width="1.5"><path d="M50 36 L20 80 M50 36 L50 80 M50 36 L80 80 M50 80 L35 124 M50 80 L65 124"/></g>
+    <g stroke="var(--snake)" stroke-width="3" fill="none"><path d="M50 36 L50 80 L65 124"/></g>
+    <g fill="var(--panel)" stroke="var(--ink)"><circle cx="50" cy="36" r="8"/><circle cx="20" cy="80" r="7"/><circle cx="50" cy="80" r="7"/><circle cx="80" cy="80" r="7"/><circle cx="35" cy="124" r="6"/><circle cx="65" cy="124" r="6"/></g></g>
+  <g transform="translate(200,0)"><text x="50" y="16" text-anchor="middle">snake 1</text>
+    <g stroke="var(--line)" stroke-width="1.5"><path d="M50 36 L20 80 M50 36 L50 80 M50 36 L80 80 M20 80 L8 124 M20 80 L32 124"/></g>
+    <g stroke="var(--snake)" stroke-width="3" fill="none"><path d="M50 36 L20 80 L8 124"/></g>
+    <g fill="var(--panel)" stroke="var(--ink)"><circle cx="50" cy="36" r="8"/><circle cx="20" cy="80" r="7"/><circle cx="50" cy="80" r="7"/><circle cx="80" cy="80" r="7"/><circle cx="8" cy="124" r="6"/><circle cx="32" cy="124" r="6"/></g></g>
+  <text x="372" y="84" class="mut">…</text>
+  <g transform="translate(420,0)"><text x="50" y="16" text-anchor="middle">snake 7 (theirs)</text>
+    <g stroke="var(--line)" stroke-width="1.5"><path d="M50 36 L20 80 M50 36 L50 80 M50 36 L80 80 M80 80 L68 124 M80 80 L92 124"/></g>
+    <g stroke="var(--apple)" stroke-width="3" fill="none"><path d="M50 36 L80 80 L92 124"/></g>
+    <g fill="var(--panel)" stroke="var(--ink)"><circle cx="50" cy="36" r="8"/><circle cx="20" cy="80" r="7"/><circle cx="50" cy="80" r="7"/><circle cx="80" cy="80" r="7"/><circle cx="68" cy="124" r="6"/><circle cx="92" cy="124" r="6"/></g></g>
+  <rect x="40" y="150" width="520" height="34" rx="6" fill="var(--code-bg)" stroke="var(--line)"/>
+  <text x="300" y="171" text-anchor="middle">one State: step(all 8 moves) each ply → evaluate once</text>
+  <text x="580" y="60">every tree picks</text><text x="580" y="76">its own move,</text><text x="580" y="92">all moves are</text><text x="580" y="108">played together</text>
+  <text x="300" y="202" text-anchor="middle" class="mut">the value goes back up every path; their snakes read it with the sign flipped</text>
+  </g>
+</svg>
+<figcaption>A node means "this snake played these moves", averaged over whatever the others did. That averaging is the approximation the method makes.</figcaption>
+</figure>
+
+<h3><code>struct Node</code></h3>
+<pre><code><span class="k">struct</span> Node {
+    float   w[4];    <span class="c">// sum of values per move, from my point of view</span>
+    float   n[4];    <span class="c">// visits per move; float so SSE can load it directly</span>
+    int32_t ch[4];   <span class="c">// child node per move, 0 = none yet</span>
+    int32_t N;       <span class="c">// visits of this node</span>
+};                   <span class="c">// 52 bytes, in one array of 1.5M allocated once</span></code></pre>
+<p>Nodes come from a bump allocator (<code>newNode</code>: clear 52 bytes, return the next index). The pool is not cleared between turns: resetting the counter to 1 is the whole "free". Index 0 means "no node".</p>
+
+<h3><code>validMask</code>: prune suicide</h3>
+<p>For the snake's three non-backward directions, a move is kept if the target cell is empty or an apple, or if it is the <em>tail</em> of some snake (which will have moved away). If nothing is left, the snake goes straight. Without this, random moves into walls drown the statistics, as one mid-Legend post-mortem reported.</p>
+
+<h3 id="select"><code>selectMove</code>: UCB with no branches</h3>
+<p>The formula per move is <code>q = ±w/n + C·sqrt(ln N / n)</code>, with the sign flipped for the opponent's snakes. Written as a loop with <code>if</code>s it was 42% of the search time on CodinGame: the branches depend on random data and mispredict. The x86 version computes all four moves at once and has no data-dependent branch:</p>
+<pre><code>e = C * sqrtLog[N];                              <span class="c">// sqrt(ln N) from a table of 65,536 floats</span>
+n = load(nd.n);
+q = load(nd.w) * sign * <span class="k">rcp</span>(n)  +  e * <span class="k">rsqrt</span>(n);    <span class="c">// SSE approximate 1/n and 1/sqrt(n)</span>
+q = blend(q, 1e6 + random byte, n == 0);         <span class="c">// unvisited: huge, in random order</span>
+q = blend(-1e9, q, maskTab[mask]);               <span class="c">// not a valid move: never</span>
+m = horizontal max of q;
+<span class="k">return</span> ctz(movemask(q == m));                    <span class="c">// position of the maximum</span></code></pre>
+<ul>
+  <li><b><code>rcp</code> and <code>rsqrt</code></b> are the 12-bit approximate instructions: about 4 cycles each instead of ~15–20 for a division or a square root, and UCB does not need more precision.</li>
+  <li><b>Unvisited moves</b> get 10⁶ plus a random byte, so they win against any visited move and tie-break randomly, with no separate "expand" code path.</li>
+  <li><b><code>maskTab</code></b> is a 16-entry table of ready-made SSE masks, indexed by the 4-bit valid-move mask.</li>
+</ul>
+<p>After the change selection is 24–31% of the time. ARM builds (the local Mac) use the plain loop with the same logic.</p>
+
+<h3 id="loop">The loop: <code>search</code></h3>
+<pre><code><span class="k">for</span> (;;) {
+    every 16 iterations: stop if the clock passed the budget;
+    depth = 3 + iters/250   (first 1000 iterations)   then +1 per 1000;
+    State S = root;                                   <span class="c">// the 5.2 kB copy</span>
+    <span class="k">for</span> (d = 0; d < depth && !S.terminal(); d++) {
+        <span class="k">for</span> each live snake i:
+            mask = validMask(S, i);
+            m    = selectMove(pool[cur[i]], mask, sign of owner);
+            remember (cur[i], m);
+            cur[i] = child of cur[i] by m, created if missing;
+        S.step(all moves);
+        sum += length difference;                     <span class="c">// for the "eat sooner" term</span>
+    }
+    raw = evaluate(S, ...);                           <span class="c">// once, at the end</span>
+    <span class="k">for</span> every remembered (node, m) of snake i:  w[m] += val[i];  n[m]++;  N++;
+}
+play, for each of my snakes, the most visited move at its root;</code></pre>
+<ul>
+  <li><b>Progressive depth.</b> The first iterations are shallow (depth 3), so every snake's first moves get sampled before anything deep is tried. By the end of a turn the depth is 11–14. The idea is from _H3R0_'s post-mortem.</li>
+  <li><b>The clock</b> is read every 16 iterations, not every one: reading it costs about as much as a quarter of an iteration.</li>
+  <li><b>Budget.</b> 44 ms counted from the first input line of the turn, 850 ms on the first turn.</li>
+</ul>
+</section>
+
+<section id="eval">
+<h2>Evaluation</h2>
+<p><code>evaluate</code> returns one number from my side, <code>raw</code>, in units of "apples":</p>
+<div class="wide"><table>
+<thead><tr><th>Term</th><th class="num">Weight</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>length difference</td><td class="num">1</td><td>the score. Half from the final position, half from the mean along the simulated line, so the same apple eaten sooner is worth more</td></tr>
+<tr><td>apple ownership</td><td class="num">0.25 / apple</td><td>+ if my nearest head is closer than theirs, − if further. Removing it costs 100 Elo</td></tr>
+<tr><td>distance to the nearest reachable apple, per snake</td><td class="num">≤ 0.94</td><td>0.08 per cell for the first 8 cells, 0.015 for the next 20, then flat</td></tr>
+<tr><td>losses difference</td><td class="num">0.05</td><td>the tie-break</td></tr>
+<tr><td>head elevation</td><td class="num">0.01 / row</td><td>higher is slightly better</td></tr>
+<tr><td>finished game</td><td class="num">± 4</td><td>added to the length difference, by score then losses</td></tr>
+</tbody></table></div>
+<div class="note warn"><b>The distance cost must stay below one apple.</b> When a snake eats the last apple it can reach, its "nearest apple" jumps to something far away or out of reach. If that jump costs more than the apple was worth, the evaluation goes <em>down</em> for eating, and the snake refuses to eat. Larger distance weights lost for exactly this reason (−89 Elo at 0.2 per cell) until the cost was capped at 0.94.</div>
+
+<h3 id="gravity">Gravity-aware distances</h3>
+<p>Board dumps of lost games showed the real problem with v1.0: the snakes sat still. Most apples hang in the air, a snake of length 3 cannot reach one four rows up, and a plain shortest-path distance pointed straight at it. The opponent ate 19 apples in the first 24 turns; we ate 12.</p>
+<p>The model that works is static. After every turn some part of a snake rests on something, so <b>its head is never more than (length − 1) cells of free path from a supported cell</b>, a free cell with a wall or an apple below it. Two passes on turn 1:</p>
+<ol class="steps">
+  <li><code>bfsSupport</code>: one multi-source BFS from every supported cell gives <code>hsup[c]</code>, how far cell c is from support.</li>
+  <li><code>bfsGravity</code>: for each apple and each length b from 1 to 16, a BFS from the apple that only walks through cells with <code>hsup ≤ b − 1</code>. Result: <code>gdist[apple][b−1][cell]</code>, one byte, 255 = out of reach at that length.</li>
+</ol>
+<figure>
+<pre style="margin:0;border:none;background:none;padding:0"><code>hsup:                      a snake of length 3 may have its head on cells ≤ 2
+  3 3 3 3 3 3 3
+  2 2 <span class="r">o</span> 2 2 2 2     &lt;- apple at hsup 2: reachable at length 3, not at length 2
+  1 1 1 1 1 1 1
+  0 0 0 0 0 0 0
+  # # # # # # #</code></pre>
+<figcaption>At the leaves a snake of length L reads <code>gdist[apple][min(L,16)−1][head]</code>: one table lookup per apple. The whole table is at most 128 × 16 × 3,072 bytes and is filled in about 20 ms on the first turn.</figcaption>
+</figure>
+<p>A first model, "never fall: every unsupported run along the path must be shorter than the body", lost 73 Elo and, with a strong penalty, 382. It is wrong about the game: a snake that turns sideways at the top of its column drops one row and carries on. Falling is part of normal movement.</p>
+
+<h3 id="credit">Per-snake credit</h3>
+<p>The largest single gain. In plain Smitsimax every tree receives the same value. But that value mostly reflects what the <em>other seven</em> snakes happened to do in that simulation, so each tree is learning from noise.</p>
+<pre><code>own[i] = (length of snake i now − at the root) − its distance cost;
+
+val[i] = squash((raw ± own[i]) / 6);     <span class="c">// + for my snakes, − for theirs (they minimise)</span>
+...
+node.w[m] += val[i];                      <span class="c">// each tree gets its own snake's value</span></code></pre>
+<p>Every snake still sees the shared result, plus an extra share of what it did itself. Measured against the same bot without it:</p>
+<div class="wide"><table>
+<thead><tr><th>Weight of own[i]</th><th class="num">0.5</th><th class="num">1</th><th class="num">2</th><th class="num">4</th></tr></thead>
+<tbody><tr><td>Elo vs weight 0 (100 games each, ± 75–95)</td><td class="num">+269</td><td class="num">+288</td><td class="num">+205</td><td class="num">+173</td></tr></tbody>
+</table></div>
+<p><code>squash</code> is a rational approximation of tanh (<code>x(27+x²)/(27+9x²)</code>, clamped at ±3). Eight values per iteration made the real <code>tanh</code> worth replacing.</p>
+</section>
+
+<section id="protocol">
+<h2>Protocol and resync: <code>main</code></h2>
+<ol class="steps">
+  <li><b>Init.</b> Read the grid into <code>baseOcc</code> (walls plus the VOID ring), the snake ids and owners. Allocate the node pools and fill the <code>sqrtLog</code> and <code>maskTab</code> tables.</li>
+  <li><b>Each turn.</b> Start the clock at the first input line. Rebuild <code>cur</code> from scratch: copy <code>baseOcc</code>, place apples, parse each body string straight into its ring buffer. Parts outside the model are cut off.</li>
+  <li><b>Turn 1 only.</b> Record the apple cells and run <code>bfsSupport</code>, then <code>bfsApple</code> and <code>bfsGravity</code> per apple.</li>
+  <li><b><code>recount</code>.</b> Totals per player, <code>sup</code> and facing of every snake.</li>
+  <li><b><code>resync</code>.</b> Check the simulator against the game and recover the opponent's moves (above).</li>
+  <li><b><code>search</code></b> with what is left of the 44 ms, then print <code>id DIRECTION</code> for each of my live snakes, joined by <code>;</code>.</li>
+  <li><b>Remember</b> the position and my moves for the next turn's resync.</li>
+</ol>
+<p>The state is rebuilt from the input every turn instead of trusting the simulated one. The simulated state is only used to verify, so one bad turn can never corrupt the rest of the game.</p>
+</section>
+
+<section id="speed">
+<h2>Speed</h2>
+<p>Measured on CodinGame with the built-in profiler (<code>#define PROF</code>): the TSC is read at each phase boundary of the loop and the shares printed to stderr every turn.</p>
+<h3>v1.0: 37k simulated turns per turn</h3>
+<div class="bars">
+  <span>falls</span><div class="bar b2" style="width:47%"></div><span class="v">47%</span>
+  <span>selection</span><div class="bar b2" style="width:31%"></div><span class="v">31%</span>
+  <span>move</span><div class="bar b2" style="width:13%"></div><span class="v">13%</span>
+  <span>evaluation</span><div class="bar b2" style="width:5%"></div><span class="v">5%</span>
+  <span>copy</span><div class="bar b2" style="width:2%"></div><span class="v">2%</span>
+  <span>backup</span><div class="bar b2" style="width:2%"></div><span class="v">2%</span>
+</div>
+<h3>v1.1: 46k–73k simulated turns per turn</h3>
+<div class="bars">
+  <span>falls</span><div class="bar" style="width:38%"></div><span class="v">36–41%</span>
+  <span>selection</span><div class="bar" style="width:27%"></div><span class="v">24–31%</span>
+  <span>move</span><div class="bar" style="width:22%"></div><span class="v">21–24%</span>
+  <span>evaluation</span><div class="bar" style="width:7%"></div><span class="v">6–8%</span>
+  <span>copy</span><div class="bar" style="width:2%"></div><span class="v">2%</span>
+  <span>backup</span><div class="bar" style="width:3%"></div><span class="v">2–3%</span>
+</div>
+<p>One "simulated turn" moves all eight snakes. Cost per simulated turn went from about 2,640 TSC ticks to 1,800–2,200. The same build varies by ±20% between CodinGame games.</p>
+<div class="wide"><table>
+<thead><tr><th>Trick</th><th>Where</th><th>Effect</th></tr></thead>
+<tbody>
+<tr><td>Stride-64 byte board with a VOID ring</td><td><code>State::occ</code></td><td>no bounds checks; collision is <code>&gt;= WALL</code></td></tr>
+<tr><td>Ring-buffer bodies</td><td><code>Snake</code></td><td>a move is one store and a counter</td></tr>
+<tr><td>Tail cleared before collisions; head written only for survivors</td><td><code>step</code></td><td>the referee's simultaneous rules with no undo</td></tr>
+<tr><td>Totals kept in place</td><td><code>len, alive, napples</code></td><td>end test and score are free</td></tr>
+<tr><td>Support counters</td><td><code>sup</code>, <code>unsupport</code></td><td>falls skipped for every snake standing on a wall or apple</td></tr>
+<tr><td>Direct drop for airborne snakes</td><td><code>fastFalls</code></td><td>falls 47% → ~38% of a faster loop</td></tr>
+<tr><td>Cached facing</td><td><code>Snake::f</code></td><td>no compare chain per selection</td></tr>
+<tr><td>Branch-free SSE UCB</td><td><code>selectMove</code></td><td>selection 42% → 24–31%</td></tr>
+<tr><td>Bump-allocated node pool, never cleared</td><td><code>newNode</code></td><td>no allocation, no per-turn memset of 78 MB</td></tr>
+<tr><td>Precomputed distances, one byte each</td><td><code>gdist</code>, <code>adist</code></td><td>evaluation is table lookups: 6–8%</td></tr>
+<tr><td>Rational tanh</td><td><code>squash</code></td><td>eight values per iteration without <code>tanh</code></td></tr>
+<tr><td>Clock every 16 iterations</td><td><code>search</code></td><td></td></tr>
+</tbody></table></div>
+<div class="note"><b>How much is speed worth?</b> Measured: three times the iterations is +104 Elo at 1,000 iterations per move and +63 at 4,000. At the arena's 6,000–8,000 that makes a 1.5× faster engine worth about +20. The 27% speed-up alone, tested in real time against v1.0, was −14 ± 61: nothing measurable. For scale, the per-snake credit, six lines of code, was +288. Reported figures from other players: about 50k turns per 50 ms for the contest winner, 4k–6k iterations per 45 ms for sZoom. This engine is in that range; the "150k / 250k simulations" quoted in two post-mortems are probably counted per snake move, which would put this one near 400k.</div>
+</section>
+
+<section id="tools">
+<h2>Local tools in the same file</h2>
+<dl class="fn">
+  <dt>PARAM(name, default)</dt><dd>Every constant of the search and evaluation. In a <code>-DLOCAL</code> build it reads <code>SB_name</code> from the environment, so a parameter sweep needs no rebuild. In the submission it is a plain constant.</dd>
+  <dt>SB_ITERS=N</dt><dd>Replace the clock by a fixed number of iterations per move. With <code>SB_SEED</code> the bot is deterministic, which is what makes the exactness test and load-independent matches possible.</dd>
+  <dt>SB_BENCH=N</dt><dd>Play 100 turns of self-play from the given position at N iterations and print simulated turns per second, with the phase split in a <code>-DPROF</code> build.</dd>
+  <dt>-DPROF</dt><dd>The phase profiler: <code>PROF_START</code> / <code>PROF_END(phase)</code> around copy, selection, move, fall, evaluation and backup. Works on CodinGame by putting <code>#define PROF</code> on the first line.</dd>
+  <dt>-DDUMP=N</dt><dd>Print the board to stderr every N turns. This is what showed the snakes sitting still.</dd>
+  <dt>-DSLOWFALL</dt><dd>Use the referee's fall loop as written: the reference build.</dd>
+</dl>
+<p><code>tools/referee.cpp</code> includes <code>bot.cpp</code> for the rules, adds a port of the official map generator (<code>GridMaker.java</code>: mirrored walls, filled air pockets, thinned walls, sunk bottom island, apples, spawns) and runs two bot processes over pipes, every map with both seats. <code>build/bot@SB_UCB_C=0.4</code> gives one side its own parameters. The same matches run on Kaggle CPU kernels through <code>tools/kaggle_match.py</code>.</p>
+</section>
+
+<section id="failed">
+<h2>What did not work</h2>
+<p>All still in the source as parameters, switched off.</p>
+<div class="wide"><table>
+<thead><tr><th>Idea</th><th class="num">Result (Elo)</th><th>Reading</th></tr></thead>
+<tbody>
+<tr><td>Tree reuse between turns, keeping 25% / 50% / 75% / 100% of the statistics</td><td class="num">−10 / 0 / −35 / −60</td><td>kept statistics come from a shallower search measured from the old root</td></tr>
+<tr><td>First visits ordered by distance to the nearest reachable apple</td><td class="num">−7, +24</td><td>inside the noise</td></tr>
+<tr><td>Less weight on the shared value in a snake's tree (0.25 / 0.5)</td><td class="num">−89 / −31</td><td>the snakes still need the common goal</td></tr>
+<tr><td>Ownership credit to the nearest snake</td><td class="num">−35, −42</td><td></td></tr>
+<tr><td>Deeper start (depth 5 instead of 3)</td><td class="num">+135 at 1,000 iterations, −3 in real time</td><td>fixed-iteration tests at low counts mislead on depth</td></tr>
+<tr><td>"Never fall" gravity model</td><td class="num">−73 to −382</td><td>falling is normal movement</td></tr>
+</tbody></table></div>
+<p>After the credit term, twenty parameter changes in a row landed inside the noise: the handcrafted evaluation is on a plateau. The next step is a learned evaluation.</p>
+</section>
+
+<section id="reference">
+<h2>Function reference</h2>
+<h3>Geometry</h3>
+<dl class="fn">
+  <dt>cellOf(x, y)</dt><dd>Grid coordinates to a cell index.</dd>
+  <dt>cx(c), cy(c)</dt><dd>Cell index back to grid coordinates.</dd>
+  <dt>inModel(x, y)</dt><dd>True if the coordinates fall inside the model, not on the VOID ring. Used when parsing input.</dd>
+</dl>
+<h3>Snake</h3>
+<dl class="fn">
+  <dt>head(), tail(), part(i)</dt><dd>Cells of the body through the ring buffer.</dd>
+  <dt>facing()</dt><dd>The cached direction index.</dd>
+  <dt>setFacing()</dt><dd>Recompute it from head minus neck; used after parsing.</dd>
+</dl>
+<h3>State</h3>
+<dl class="fn">
+  <dt>recount()</dt><dd>Totals per player, plus <code>sup</code> and facing of every snake, from scratch. Called once per turn after parsing.</dd>
+  <dt>resup(i)</dt><dd>Recount the supported parts of snake i. Called when it lands.</dd>
+  <dt>unsupport(c)</dt><dd>The apple at c is gone: the part directly above loses one support.</dd>
+  <dt>terminal()</dt><dd>No apples, a player with no snakes, or turn 200.</dd>
+  <dt>step(mv)</dt><dd>One full game turn for all snakes.</dd>
+  <dt>fastFalls(air)</dt><dd>Exact falls for the snakes in the bit set, by direct drop.</dd>
+  <dt>supported(i, grounded), falls()</dt><dd>The referee's row-by-row loop: the reference, used with <code>-DSLOWFALL</code>.</dd>
+</dl>
+<h3>Distances</h3>
+<dl class="fn">
+  <dt>bfsApple(a)</dt><dd>Plain BFS from apple a through non-wall cells into <code>adist</code>. Used when gravity distances are switched off.</dd>
+  <dt>bfsSupport(occ)</dt><dd>Multi-source BFS from all supported cells into <code>hsup</code>.</dd>
+  <dt>bfsGravity(a)</dt><dd>Sixteen restricted BFS passes from apple a into <code>gdist</code>.</dd>
+  <dt>budget(S, i)</dt><dd>Length of snake i, capped at 16: its row in <code>gdist</code>.</dd>
+</dl>
+<h3>Evaluation and search</h3>
+<dl class="fn">
+  <dt>squash(x)</dt><dd>Fast tanh.</dd>
+  <dt>evaluate(S, meanDiff, root, own)</dt><dd>The shared value <code>raw</code>, and in <code>own[]</code> each snake's own contribution.</dd>
+  <dt>rnd()</dt><dd>xorshift64, upper 32 bits.</dd>
+  <dt>newNode()</dt><dd>Next node of the pool, cleared.</dd>
+  <dt>validMask(S, i)</dt><dd>Bit set of the moves of snake i that do not hit a wall or a body.</dd>
+  <dt>selectMove(node, mask, sign, F, head)</dt><dd>The UCB choice.</dd>
+  <dt>copyTree(o, f)</dt><dd>Copy a subtree between pools with its statistics scaled; only used by the switched-off tree reuse.</dd>
+  <dt>search(root, budget, out, played)</dt><dd>The Smitsimax loop; fills one direction per snake.</dd>
+  <dt>initSearch()</dt><dd>Allocate the pools, fill <code>sqrtLog</code> and <code>maskTab</code>.</dd>
+</dl>
+<h3>Protocol</h3>
+<dl class="fn">
+  <dt>sameState(a, b)</dt><dd>Same apple count and identical bodies.</dd>
+  <dt>resync()</dt><dd>Find the opponent's last moves by trying all of them; carry the losses over.</dd>
+  <dt>main()</dt><dd>Read the game, loop over turns: parse, resync, search, print.</dd>
+</dl>
+</section>
+</main>
+</div>
+</body>
+</html>

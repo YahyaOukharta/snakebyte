@@ -562,7 +562,10 @@ static int copyTree(int o, float f) {
         pool[x].n[d] = n;
         pool[x].w[d] = src.n[d] > 0 ? src.w[d] * (n / src.n[d]) : 0;
         N += n;
-        if (n > 0 && src.ch[d]) { int c = copyTree(src.ch[d], f); pool[x].ch[d] = c; }   // pool may move? no: fixed array
+        if (n > 0 && src.ch[d]) {
+            int c = copyTree(src.ch[d], f);
+            pool[x].ch[d] = c;
+        }
     }
     pool[x].N = (int32_t)N;
     return x;
