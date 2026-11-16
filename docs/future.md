@@ -1,21 +1,21 @@
 # Roadmap
 
-State: v1.0 is a correct engine, a plain Smitsimax and an untuned handcrafted evaluation.
-Everything below is ordered by what the post-mortems say paid most ([research.md](research.md)).
+State: v1.1 (rank 19 at 55% of its run). The handcrafted evaluation is on a plateau after
+the per-snake credit; compute is worth about +60 Elo per tripling. Next in line: a learned
+evaluation (phase 4) and engine speed.
 
 ## Phase 3: the known big wins
 
-- [ ] **Gravity-aware distances.** BFS that tracks the longest unsupported run, precomputed
-  on turn 1 per body length (_H3R0_: ~#55 → top 20; sZoom the same idea up to length 13).
-  The current plain BFS calls an apple four rows up in open air "4 away".
+- [x] **Gravity-aware distances** (v1.1, a static reach model; see search.md). Open: other
+  snakes and eaten apples as support; _H3R0_'s per-path model.
 - [ ] **Voronoi territory** at the leaves on bitboards (64-bit rows): apples and cells each
   side reaches first. The board already has a stride of 64 for this.
-- [ ] **Tune the evaluation weights and UCB constant** on the local league (none is tuned).
-- [ ] **Selection priors**: toward apples, supported cells, a tail about to move
-  (frictionless, jacek).
+- [x] Evaluation weights and UCB constant swept (v1.1): plateau.
+- [ ] **Selection priors** as a bias inside UCB (frictionless, jacek). Ordering the first
+  visits by apple distance alone did nothing.
 - [ ] **State merging**: nodes keyed by (head cell, facing, turn parity) instead of move
   history (frictionless).
-- [ ] **Per-snake credit**: blend each snake's backed-up value with its own size change (jacek).
+- [x] **Per-snake credit** (v1.1): +288 Elo.
 - [ ] **Pairs**: snakes close together searched as one unit so they can climb on each other.
 
 ## Speed
@@ -25,7 +25,7 @@ Everything below is ordered by what the post-mortems say paid most ([research.md
 - [ ] Falls (30%): one pass instead of four over an airborne snake; a special case for the
   vertical climb.
 - [ ] Copy only the rows of the board that are in use.
-- [ ] Tree reuse between turns.
+- [x] Tree reuse between turns: tried, no gain (history.md).
 
 ## Phase 4: learned evaluation
 
@@ -41,6 +41,5 @@ Everything below is ordered by what the post-mortems say paid most ([research.md
 
 ## Testing
 
-- [ ] Per-bot parameters in the referee (`A@SB_UCB_C=0.5`) for sweeps.
-- [ ] Real-time gates on Kaggle (x86, like CodinGame) instead of the laptop.
+- [x] Per-bot parameters in the referee (`A@SB_UCB_C=0.5`) and matches on Kaggle (`tools/kaggle_match.py`).
 - [ ] A gauntlet tool: N test games against the players above us, results per opponent.

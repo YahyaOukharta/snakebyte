@@ -326,13 +326,18 @@ PARAM(EV_N1, 8);
 PARAM(EV_S2, 0.015);     // ... and per cell for the next EV_N2. The total stays below one apple,
 PARAM(EV_N2, 20);        // so eating the last apple in reach never lowers the evaluation
 PARAM(EV_SELF, 1.0);     // per-snake credit: weight of the snake's own growth and apple distance in its own tree
+PARAM(POL, 0);           // 1: an unvisited move is tried in order of distance to the nearest apple, 0: at random
+PARAM(POL_EPS, 8);       // one first visit in POL_EPS ignores that order
+PARAM(REUSE, 0);         // tree reuse: share of last turn's statistics kept under the moves played (0 = off)
+PARAM(EV_GLOB, 1.0);     // weight of the shared value in a snake's own tree
+PARAM(EV_OWNS, 0);       // credit to the snake that is nearest to an apple its side owns
 PARAM(EV_MEAN, 0.5);     // share of the mean length difference along the line (eat sooner)
 PARAM(D_BASE, 3);        // depth = D_BASE + iterations / D_STEP1 until D_SW iterations ...
 PARAM(D_STEP1, 250);
 PARAM(D_SW, 1000);
 PARAM(D_STEP2, 1000);    // ... then one more ply per D_STEP2 iterations
 PARAM(D_MAX, 40);
-PARAM(TIME_MS, 42);
+PARAM(TIME_MS, 44);      // per turn, counted from the first input line of the turn
 PARAM(TIME_FIRST, 850);
 
 // ───────────────────────────── apple distances ─────────────────────────────
@@ -427,7 +432,7 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
         for (int i = 0; i < NS; i++) own[i] = S.s[i].alive ? S.s[i].len - root.s[i].len : -(double)root.s[i].len;
         return raw;
     }
-    int best[MAXS], bud[MAXS];
+    int best[MAXS], bud[MAXS], ownA[MAXS] = {0};
     const bool grav = EV_GRAV != 0;
     for (int i = 0; i < NS; i++) {
         best[i] = 255;
@@ -436,7 +441,7 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
     for (int a = 0; a < nApple0; a++) {
         if (S.occ[appleCell[a]] != APPLE) continue;
         const uint8_t *d = adist[a];
-        int m0 = 255, m1 = 255;
+        int m0 = 255, m1 = 255, i0 = 0, i1 = 0;
         for (int i = 0; i < NS; i++) {
             if (!S.s[i].alive) continue;
             int hd = S.s[i].head(), v = d[hd];
@@ -444,11 +449,11 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
                 v = gdist[a][bud[i]][hd];                    // 255: out of reach for this length
             }
             if (v < best[i]) best[i] = v;
-            if (OWNER[i] == 0) { if (v < m0) m0 = v; }
-            else if (v < m1) m1 = v;
+            if (OWNER[i] == 0) { if (v < m0) m0 = v, i0 = i; }
+            else if (v < m1) m1 = v, i1 = i;
         }
-        if (m0 < m1) raw += EV_OWN;                         // (an apple nobody can reach counts for nobody)
-        else if (m1 < m0) raw -= EV_OWN;
+        if (m0 < m1) raw += EV_OWN, ownA[i0]++;             // (an apple nobody can reach counts for nobody)
+        else if (m1 < m0) raw -= EV_OWN, ownA[i1]++;
     }
     for (int i = 0; i < NS; i++) {
         if (!S.s[i].alive) continue;
@@ -459,7 +464,7 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
         } else dc = EV_DIST * min(best[i], 60);
         double v = -dc + EV_ELEV * (H - cy(S.s[i].head()));
         raw += OWNER[i] == 0 ? v : -v;
-        own[i] = S.s[i].len - root.s[i].len - dc;
+        own[i] = S.s[i].len - root.s[i].len - dc + EV_OWNS * ownA[i];
     }
     for (int i = 0; i < NS; i++)
         if (!S.s[i].alive) own[i] = -(double)root.s[i].len;
@@ -474,8 +479,10 @@ struct Node {
     int32_t N;       // visits of the node
 };
 enum { POOL = 1500000 };
-static Node *pool;
+static Node *pool, *pool2;       // pool2: last turn's trees, read while the kept part is copied over
 static int poolN;
+static int keptRoots[MAXS];      // root of each snake's tree after the last search
+static bool haveTrees = false;
 static float sqrtLog[65536];     // sqrt(ln N)
 static uint64_t rngS = 0x9E3779B97F4A7C15ULL;
 static inline uint32_t rnd() {
@@ -509,26 +516,34 @@ static inline int validMask(const State &S, int i) {
 #if defined(__x86_64__)
 static __m128 maskTab[16];
 #endif
-static inline int selectMove(const Node &nd, int mask, float sign) {
+// nearF[i][c]: distance from cell c to the nearest apple still on the board that snake i
+// can reach at its root length. Filled once per search; the order of first visits follows it.
+static uint8_t nearF[MAXS][CELLS];
+
+static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t *F, int hd) {
     float e = (float)UCB_C * (nd.N < 65536 ? sqrtLog[nd.N] : sqrtf(logf((float)nd.N)));
     uint32_t r = rnd();
+    // priority of an unvisited move: closer to an apple first, random among equals
+    int pol = (r >> 24) % (int)POL_EPS != 0 ? 256 : 0;
+    int p0 = (255 - F[hd - STRIDE]) * pol + (r & 255), p1 = (255 - F[hd + 1]) * pol + (r >> 8 & 255),
+        p2 = (255 - F[hd + STRIDE]) * pol + (r >> 16 & 255), p3 = (255 - F[hd - 1]) * pol + (r >> 5 & 255);
 #if defined(__x86_64__)
     __m128 n = _mm_loadu_ps(nd.n);
     __m128 q = _mm_add_ps(_mm_mul_ps(_mm_mul_ps(_mm_loadu_ps(nd.w), _mm_set1_ps(sign)), _mm_rcp_ps(n)),
                           _mm_mul_ps(_mm_set1_ps(e), _mm_rsqrt_ps(n)));
-    __m128 jit = _mm_add_ps(_mm_set1_ps(1e6f),
-                            _mm_cvtepi32_ps(_mm_and_si128(_mm_set_epi32(r >> 24, r >> 16, r >> 8, r), _mm_set1_epi32(255))));
+    __m128 jit = _mm_add_ps(_mm_set1_ps(1e6f), _mm_cvtepi32_ps(_mm_set_epi32(p3, p2, p1, p0)));
     q = _mm_blendv_ps(q, jit, _mm_cmpeq_ps(n, _mm_setzero_ps()));
     q = _mm_blendv_ps(_mm_set1_ps(-1e9f), q, maskTab[mask]);
     __m128 m = _mm_max_ps(q, _mm_shuffle_ps(q, q, _MM_SHUFFLE(1, 0, 3, 2)));
     m = _mm_max_ps(m, _mm_shuffle_ps(m, m, _MM_SHUFFLE(2, 3, 0, 1)));
     return __builtin_ctz(_mm_movemask_ps(_mm_cmpeq_ps(q, m)));
 #else
+    const int pr[4] = {p0, p1, p2, p3};
     float bestV = -2e9f;
     int best = 0;
     for (int d = 0; d < 4; d++) {
         float q = !(mask >> d & 1) ? -1e9f
-                  : nd.n[d] == 0 ? 1e6f + (float)(r >> (8 * d) & 255)
+                  : nd.n[d] == 0 ? 1e6f + (float)pr[d]
                   : sign * nd.w[d] / nd.n[d] + e / sqrtf(nd.n[d]);
         if (q > bestV) bestV = q, best = d;
     }
@@ -536,20 +551,61 @@ static inline int selectMove(const Node &nd, int mask, float sign) {
 #endif
 }
 
+// Copies the subtree at old node o (in pool2) into pool, scaling its statistics by f.
+static int copyTree(int o, float f) {
+    int x = newNode();
+    if (!x) return 0;
+    const Node &src = pool2[o];
+    float N = 0;
+    for (int d = 0; d < 4; d++) {
+        float n = floorf(src.n[d] * f);
+        pool[x].n[d] = n;
+        pool[x].w[d] = src.n[d] > 0 ? src.w[d] * (n / src.n[d]) : 0;
+        N += n;
+        if (n > 0 && src.ch[d]) { int c = copyTree(src.ch[d], f); pool[x].ch[d] = c; }   // pool may move? no: fixed array
+    }
+    pool[x].N = (int32_t)N;
+    return x;
+}
+
 static int lastIters, lastDepth, lastSims;
 static long fixedIters = 0;      // LOCAL: iterations per move instead of time
 
 // Returns the chosen direction per snake in out[] (all snakes, opponents included).
-static void search(const State &root, double budgetMs, int8_t *out) {
+static void search(const State &root, double budgetMs, int8_t *out, const int8_t *played = nullptr) {
     auto t0 = chrono::steady_clock::now();
-    poolN = 1;
     int roots[MAXS];
-    for (int i = 0; i < NS; i++) roots[i] = root.s[i].alive ? newNode() : 0;
+    if (REUSE > 0 && played && haveTrees) {                  // keep what was searched under the moves played
+        swap(pool, pool2);
+        poolN = 1;
+        for (int i = 0; i < NS; i++) {
+            roots[i] = 0;
+            if (!root.s[i].alive) continue;
+            int o = keptRoots[i] ? pool2[keptRoots[i]].ch[played[i]] : 0;
+            roots[i] = o ? copyTree(o, (float)REUSE) : 0;
+            if (!roots[i]) roots[i] = newNode();
+        }
+    } else {
+        poolN = 1;
+        for (int i = 0; i < NS; i++) roots[i] = root.s[i].alive ? newNode() : 0;
+    }
     static int pathNode[64][MAXS];
     static int8_t pathMove[64][MAXS];
     int iters = 0, depth = (int)D_BASE;
     int rootDiff = root.len[0] - root.len[1];
     int sims = 0;
+    for (int i = 0; i < NS; i++) {
+        if (!root.s[i].alive) continue;
+        uint8_t *F = nearF[i];
+        memset(F, POL != 0 ? 255 : 0, CELLS);
+        if (POL == 0) continue;
+        int b = budget(root, i) - 1;
+        for (int a = 0; a < nApple0; a++) {
+            if (root.occ[appleCell[a]] != APPLE) continue;
+            const uint8_t *g = gdist[a][b];
+            for (int c = 0; c < CELLS; c++) F[c] = g[c] < F[c] ? g[c] : F[c];
+        }
+    }
     for (;;) {
         if (fixedIters) { if (iters >= fixedIters) break; }
         else if ((iters & 15) == 0 &&
@@ -577,7 +633,7 @@ static void search(const State &root, double budgetMs, int8_t *out) {
                     mv[i] = m;
                     continue;
                 }
-                m = selectMove(pool[nd], mask, OWNER[i] == 0 ? 1.f : -1.f);
+                m = selectMove(pool[nd], mask, OWNER[i] == 0 ? 1.f : -1.f, nearF[i], S.s[i].head());
                 mv[i] = m;
                 pathNode[d][i] = nd;
                 pathMove[d][i] = m;
@@ -592,7 +648,7 @@ static void search(const State &root, double budgetMs, int8_t *out) {
         double raw = evaluate(S, d ? rootDiff + sum / d : rootDiff, root, own);
         float val[MAXS];                                     // value for each snake's tree, player 0's view
         for (int i = 0; i < NS; i++)
-            val[i] = squash((raw + (OWNER[i] == 0 ? EV_SELF : -EV_SELF) * own[i]) / EV_K);
+            val[i] = squash((EV_GLOB * raw + (OWNER[i] == 0 ? EV_SELF : -EV_SELF) * own[i]) / EV_K);
         PROF_END(P_EVAL);
         for (int e = 0; e < d; e++)
             for (int i = 0; i < NS; i++) {
@@ -615,10 +671,12 @@ static void search(const State &root, double budgetMs, int8_t *out) {
         out[i] = best;
     }
     lastIters = iters, lastDepth = depth, lastSims = sims;
+    memcpy(keptRoots, roots, sizeof roots), haveTrees = true;
 }
 
 static void initSearch() {
     pool = (Node *)malloc(sizeof(Node) * POOL);
+    pool2 = (Node *)malloc(sizeof(Node) * POOL);
     for (int i = 1; i < 65536; i++) sqrtLog[i] = sqrtf(logf((float)i));
 #if defined(__x86_64__)
     for (int m = 0; m < 16; m++)
@@ -629,7 +687,7 @@ static void initSearch() {
 // ───────────────────────────── protocol ─────────────────────────────
 #ifndef SB_NO_MAIN
 static State cur, prevS;
-static int8_t myMv[MAXS];
+static int8_t myMv[MAXS], playedMv[MAXS];   // playedMv: what every snake did last turn (from resync)
 static bool havePrev = false;
 static int desyncs = 0, turnNo = 0;
 
@@ -665,6 +723,7 @@ static bool resync() {
         t.step(mv);
         if (sameState(t, cur)) {
             cur.losses[0] = t.losses[0], cur.losses[1] = t.losses[1];
+            memcpy(playedMv, mv, sizeof mv);
             return true;
         }
     }
@@ -789,7 +848,8 @@ int main() {
 #ifdef PROF
         memset(prof, 0, sizeof prof);            // drop what resync() added
 #endif
-        search(cur, turnNo == 0 ? TIME_FIRST : TIME_MS, mv);
+        double used = chrono::duration<double, milli>(chrono::steady_clock::now() - t0).count();
+        search(cur, (turnNo == 0 ? TIME_FIRST : TIME_MS) - used, mv, havePrev && synced ? playedMv : nullptr);
         string outp;
         for (int i = 0; i < NS; i++) {
             if (OWNER[i] != 0 || !cur.s[i].alive) continue;

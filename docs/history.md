@@ -9,7 +9,7 @@ maps, both seats). Self-play overstates arena gains.
 |---|---|---|---|---|
 | legacy | March 2026 submission: per-snake MCTS, depth 6, 32 ms | | 17.91 | 328 / 394 |
 | v1.0 | from scratch: exact engine (0 desyncs), Smitsimax, handcrafted evaluation, 42 ms | vs legacy, real time: +14 −7 in the games legacy finished; legacy crashed in 59 of 80 | 19.0 at 54% (replaced) | ~254 |
-| v1.1 | per-snake credit in the backup; gravity-aware apple distances with a capped two-slope cost; UCB constant 0.35 → 0.7; support counters + direct falls + branch-free selection (37k → 46k–73k simulated turns per turn) | vs v1.0: +88 −8 =4 real time (+382 ± 119), +88 −10 =2 at 1000 iterations | submission 41730269 | |
+| v1.1 | per-snake credit in the backup; gravity-aware apple distances with a capped two-slope cost; UCB constant 0.35 → 0.7; support counters + direct falls + branch-free selection (37k → 46k–73k simulated turns per turn) | vs v1.0: +88 −8 =4 real time (+382 ± 119), +88 −10 =2 at 1000 iterations | 26.6 at 18%, 27.5 at 33%, 29.3 at 53%, **29.42 at 55%** (still running) | **19** |
 
 ## Measurements
 
@@ -32,6 +32,17 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Second model with the capped two-slope cost: 0.05×10 + 0.01×30 / 0.08×8 + 0.01×30 / 0.05×10 + 0.02×20 / 0.03×20 + 0.01×20 | 100 each | +3 / +70 / +42 / +3 (± 70) |
 | Faster engine alone (support counters, direct falls, SSE selection: +27% simulated turns) vs v1.0, real time on a loaded laptop | 120 | −14 ± 61 |
 
+| Apple-directed first visits (`POL`): an unvisited move is tried in order of distance to the nearest reachable apple, 1 in 8 / 1 in 3 at random, vs random order | 100 each, 1000 it | −7 / +24 (± 64): off |
+| Start depth `D_BASE` 5 / 8 / 12 vs 3 | 100–200 each, 1000 it | +135, +85 / +78 / +10 |
+| Start depth 5 / 7 vs 3, **real time** | 100 each | −3 / −21 (± 60): the gain at 1000 iterations is not there at 6000 |
+| Gravity distances off (`EV_GRAV` 0) vs on, with credit | 200 | +53, −3: no difference in self-play |
+| Iterations ×3: 3000 vs 1000; 12000 vs 4000 | 100 each | +104 ± 67; +63 ± 61 |
+| Tree reuse (`REUSE`): statistics under the played moves kept, scaled by 0.25 / 0.5 / 0.75 / 1 | 100 each, 1000 it | −10 / 0 / −35 / −60: off |
+| Shared value weight in a snake's tree (`EV_GLOB`) 0.25 / 0.5 / 1.5 vs 1 | 100 each | −89 / −31 / 0 |
+| Credit for owned apples to the nearest snake (`EV_OWNS`) 0.25 / 0.5 | 100 each | −35 / −42 |
+| With credit: UCB 0.4 / 1.1 vs 0.7; `EV_K` 4 / 9; mean share 0; ownership 0 / 0.5; win bonus 1; losses 0.3; elevation 0; second depth step 500 | 100 each | +10 / −14; −24 / −38; −38; −100 / −35; −42; +14; −10; +3 |
+| Two-slope cost 0.12×6 / 0.05×12 vs 0.08×8 | 100 each | −21 / +45 (± 61) |
+
 ## What was learned
 
 - **Credit assignment was the bottleneck, not speed.** With eight snakes sharing one value,
@@ -50,6 +61,15 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   is why larger plain weights lost.
 - **100 games resolve about ±70 Elo.** Fine for effects like the credit term; the weight
   tuning above is mostly inside the noise.
+- **Fixed-iteration tests at 1000 iterations mislead on depth.** A deeper start looked like
+  +100 Elo and was worth nothing in real time, where the depth is already 12. Depth and
+  time questions are tested in real time or at 5000+ iterations.
+- **Compute is worth about +60 Elo per tripling** at the arena's level of iterations, so a
+  1.5× faster engine is worth about +20: real, but smaller than one good evaluation idea.
+- **Tree reuse does not pay here.** Kept statistics come from a search one ply shallower with
+  the values measured from the old root; the more is kept, the worse it plays.
+- **After the credit term the handcrafted evaluation is on a plateau**: twenty parameter and
+  structure changes in a row inside the noise.
 - Selection was 42% of the search time on CodinGame before it was made branch-free; falls
   47% before the support counters.
 

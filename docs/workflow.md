@@ -11,6 +11,8 @@ measurement, negative results recorded.
 |---|---|
 | `build/referee A B -g 100 -j 4 [-n ITERS]` | Match between two binaries on random Legend maps, every map played with both seats. Without `-n` the bots use their own clock (real time); with it both run a fixed number of iterations per move. `-v` prints one JSON line per game |
 | `build/referee --map SEED` / `--dump SEED` | Print a generated map / the first-turn input for it (benchmark positions in `tools/bench/`) |
+| `tools/kaggle_match.py push / status / fetch` | The same matches on Kaggle CPU kernels (x86), one pairing per kernel, two accounts (`SB_KP=2`); bot specs take parameters: `bot.cpp@SB_UCB_C=0.5` |
+| `build/referee build/bot@SB_UCB_C=0.5 build/bot ...` | Parameters for one side only: any `PARAM` of `bot.cpp` as `SB_<name>` |
 | `tools/league.py add / match / show` | Frozen versions (`league/src`), head-to-head with Elo ± 95%, log in `league/results.jsonl` |
 | `tools/cg.py test SRC [OPPONENT] [--replay GAME_ID]` | A test game on CodinGame; the log goes to `arena/logs/` |
 | `tools/cg.py submit SRC` | Submit to the arena, then mirror the code into the CodinGame IDE |
@@ -39,8 +41,10 @@ measurement, negative results recorded.
 5. **Arena run**, then record the result in [history.md](history.md) and freeze the version
    (`versions/vX.Y.cpp`, `tools/league.py add vX.Y`).
 
-Fixed match lengths, decided before the match; no early stopping. 100 maps (200 games) give
-about ±45 Elo.
+Fixed match lengths, decided before the match; no early stopping. Batches are 100 games
+(`-g 50`): about ±65 Elo, two minutes at 1000 iterations on the laptop. Enough for large
+effects; a small one needs several batches pooled. Depth and time questions are tested in
+real time, not at 1000 iterations (history.md).
 
 ## Local referee
 
