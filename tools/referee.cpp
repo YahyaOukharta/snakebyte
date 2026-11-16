@@ -4,6 +4,7 @@
 // with its own random numbers: same distribution of maps, not the same map for a seed.
 //
 //   referee A B [-g MAPS] [-j JOBS] [-n ITERS] [-s SEED] [-l LEAGUE] [-v]
+//   A and B are binaries, optionally with parameters: build/bot@SB_UCB_C=0.5,SB_EV_OWN=0.3
 //   referee --map SEED          print one map
 // Every map is played twice with the seats swapped. -n sets SB_ITERS for both bots
 // (fixed iterations per move); without it the bots use their own clock.
@@ -254,7 +255,21 @@ struct Proc {
             if (!showErr) freopen("/dev/null", "w", stderr);
             if (iters) setenv("SB_ITERS", to_string(iters).c_str(), 1);
             setenv("SB_SEED", to_string(seed).c_str(), 1);
-            execl(path, path, (char *)0);
+            // "path@SB_UCB_C=0.5,SB_EV_OWN=0.3": parameters for this bot only
+            string spec(path), exe = spec.substr(0, spec.find('@'));
+            if (spec.find('@') != string::npos) {
+                string rest = spec.substr(spec.find('@') + 1);
+                size_t p = 0;
+                while (p < rest.size()) {
+                    size_t e = rest.find(',', p);
+                    if (e == string::npos) e = rest.size();
+                    string kv = rest.substr(p, e - p);
+                    size_t q = kv.find('=');
+                    if (q != string::npos) setenv(kv.substr(0, q).c_str(), kv.substr(q + 1).c_str(), 1);
+                    p = e + 1;
+                }
+            }
+            execl(exe.c_str(), exe.c_str(), (char *)0);
             _exit(127);
         }
         close(a[0]), close(b[1]);
@@ -422,6 +437,30 @@ int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
     if (argc >= 3 && !strcmp(argv[1], "--map")) {
         printMap(makeMap(strtoull(argv[2], 0, 10), argc > 3 ? atoi(argv[3]) : 4));
+        return 0;
+    }
+    if (argc >= 3 && !strcmp(argv[1], "--dump")) {       // first-turn input of player 0, for SB_BENCH
+        Map m = makeMap(strtoull(argv[2], 0, 10), 4);
+        int per = (int)m.spawns.size();
+        printf("0\n%d\n%d\n", m.w, m.h);
+        for (int y = 0; y < m.h; y++) {
+            for (int x = 0; x < m.w; x++) putchar(m.wall[y * m.w + x] ? '#' : '.');
+            putchar('\n');
+        }
+        printf("%d\n", per);
+        for (int k = 0; k < 2 * per; k++) printf("%d\n", k);
+        printf("%zu\n", m.apples.size());
+        for (int a : m.apples) printf("%d %d\n", a % m.w, a / m.w);
+        printf("%d\n", 2 * per);
+        for (int p = 0; p < 2; p++)
+            for (int k = 0; k < per; k++) {
+                printf("%d ", p * per + k);
+                for (int j = 0; j < 3; j++) {
+                    int c = p ? m.opp(m.spawns[k][j]) : m.spawns[k][j];
+                    printf("%s%d,%d", j ? ":" : "", c % m.w, c / m.w);
+                }
+                putchar('\n');
+            }
         return 0;
     }
     if (argc < 3) {
