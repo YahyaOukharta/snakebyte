@@ -10,6 +10,7 @@
 //   referee --export OUT IN...                  records -> features and labels
 //   referee --evalcheck NET RECORDS N           net output of the engine on the first N records
 //   referee --trace FILE                        replay a recorded game, print every position (tools/trace.py)
+//   referee --agree FILE EVERY ITERS            share of the game's moves our search picks itself (tools/agree.py)
 //   referee --rail FILE T K BOT [ITERS]         the game up to turn T, then BOT plays our snakes for K turns against his recorded moves
 // Every map is played twice with the seats swapped. -n sets SB_ITERS for both bots
 // (fixed iterations per move); without it the bots use their own clock.
@@ -594,11 +595,13 @@ static Result playGame(const Map &m, const char *bot0, const char *bot1, long it
 // our snakes afresh while the opponent's snakes stay on the moves they really played. Not
 // what he would have answered, but it shows whether a build walks into the same trap.
 // Prints "RAIL walls W deaths D lost P len L0->L1" for our side over those K turns.
+static int agreeEvery = 0;       // --agree: every so many turns, search the position and compare with the moves of the game
+static long agA[2], agN[2];
 static const char *railBot = nullptr;
 static int railFrom = -1, railK = 0;
 static long railIters = 6000;
 static Proc rp;
-static int rw = 0, rd = 0, rl = 0, rlen0 = 0;
+static int rw = 0, rd = 0, rl = 0, rlen0 = 0, rlen1 = 0;
 static string frameOf(const State &S, int w, int h) {
     string ap, sn;
     int na = 0, live = 0;
@@ -677,8 +680,8 @@ static int traceGame(const char *path, int dumpTurn = -1) {
             }
             return 0;
         }
-        if (dumpTurn < 0 && !railBot) printf("%d | %d %d | %d %d | %d |", S.turn, S.len[0], S.len[1], S.losses[0], S.losses[1], S.napples);
-        for (int i = 0; i < n && dumpTurn < 0 && !railBot; i++) {
+        if (dumpTurn < 0 && !railBot && !agreeEvery) printf("%d | %d %d | %d %d | %d |", S.turn, S.len[0], S.len[1], S.losses[0], S.losses[1], S.napples);
+        for (int i = 0; i < n && dumpTurn < 0 && !railBot && !agreeEvery; i++) {
             const Snake &k = S.s[i];
             if (!k.alive) { printf(" 0 0 0 0 0 0 255"); continue; }
             int l, r, bd = 255, ba = -1;
@@ -688,7 +691,7 @@ static int traceGame(const char *path, int dumpTurn = -1) {
                 if (S.occ[appleCell[a]] == APPLE && row[a] < bd) bd = row[a], ba = a;
             printf(" 1 %d %d %d %d %d %d", k.len, cx(k.head()), cy(k.head()), ba < 0 ? -1 : cx(appleCell[ba]), ba < 0 ? -1 : cy(appleCell[ba]), bd);
         }
-        if (dumpTurn < 0 && !railBot && getenv("SB_SURV")) {                         // per snake "legalMask/survivingMask" (depth SB_SURV, others fixed)
+        if (dumpTurn < 0 && !railBot && !agreeEvery && getenv("SB_SURV")) {                         // per snake "legalMask/survivingMask" (depth SB_SURV, others fixed)
             printf(" | S");
             for (int i = 0; i < n; i++) {
                 if (!S.s[i].alive) { printf(" 0/0"); continue; }
@@ -712,9 +715,10 @@ static int traceGame(const char *path, int dumpTurn = -1) {
                 printf(" %d/%d", rm, ok);
             }
         }
-        if (dumpTurn < 0 && !railBot) printf(" |%s\n", eaten.c_str());
+        if (dumpTurn < 0 && !railBot && !agreeEvery) printf(" |%s\n", eaten.c_str());
         if (S.terminal() || (t >= T && !(railBot && t < railFrom + railK))) {
-            if (railBot) printf("RAIL walls %d deaths %d lost %d len %d->%d\n", rw, rd, rl, rlen0, S.len[0]), rp.stop();
+            if (agreeEvery) printf("AGREE us %ld %ld opp %ld %ld\n", agA[0], agN[0], agA[1], agN[1]);
+            if (railBot) printf("RAIL walls %d deaths %d lost %d len %d->%d opp %d->%d\n", rw, rd, rl, rlen0, S.len[0], rlen1, S.len[1]), rp.stop();
             break;
         }
         int8_t mv[MAXS];
@@ -722,7 +726,7 @@ static int traceGame(const char *path, int dumpTurn = -1) {
         int railMv[MAXS];
         bool rail = railBot && t >= railFrom && t < railFrom + railK;
         if (railBot && t == railFrom + railK) {
-            printf("RAIL walls %d deaths %d lost %d len %d->%d\n", rw, rd, rl, rlen0, S.len[0]);
+            printf("RAIL walls %d deaths %d lost %d len %d->%d opp %d->%d\n", rw, rd, rl, rlen0, S.len[0], rlen1, S.len[1]);
             rp.stop();
             return 0;
         }
@@ -737,7 +741,7 @@ static int traceGame(const char *path, int dumpTurn = -1) {
                 init += to_string(n / 2) + "\n";
                 for (int k = 0; k < n; k++) init += to_string(k) + "\n";
                 rp.send(init);
-                rlen0 = S.len[0];
+                rlen0 = S.len[0], rlen1 = S.len[1];
             }
             rp.send(frameOf(S, w, h));
             string o = rp.line(20000);
@@ -766,6 +770,16 @@ static int traceGame(const char *path, int dumpTurn = -1) {
         }
         // what each snake runs into this turn, written after the apples as "!snake:cause:other:lengthBefore"
         // causes: W wall, S own body, B body of snake `other`, H head-on with `other`, F fell out
+        if (agreeEvery && t >= 4 && t % agreeEvery == 0) {
+            int8_t out[MAXS];
+            haveTrees = false;
+            search(S, 0, out);
+            for (int i = 0; i < n; i++) {
+                if (!S.s[i].alive || __builtin_popcount(rawMask(S, i)) < 2) continue;    // only real choices
+                int side = i >= n / 2;
+                agN[side]++, agA[side] += out[i] == mv[i];
+            }
+        }
         int lenB[MAXS], nhd[MAXS];
         bool aliveB[MAXS];
         string hits;
@@ -808,6 +822,12 @@ static int traceGame(const char *path, int dumpTurn = -1) {
 
 int main(int argc, char **argv) {
     if (argc >= 3 && !strcmp(argv[1], "--trace")) return traceGame(argv[2], argc > 3 ? atoi(argv[3]) : -1);
+    if (argc >= 5 && !strcmp(argv[1], "--agree")) {          // FILE EVERY ITERS: does our search pick the moves that were played?
+        agreeEvery = atoi(argv[3]), fixedIters = atol(argv[4]);
+        initSearch();
+        if (getenv("SB_NET")) loadNet(getenv("SB_NET"));
+        return traceGame(argv[2]);
+    }
     if (argc >= 6 && !strcmp(argv[1], "--rail")) {
         railFrom = atoi(argv[3]), railK = atoi(argv[4]), railBot = argv[5];
         if (argc > 6) railIters = atol(argv[6]);

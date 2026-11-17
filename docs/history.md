@@ -17,7 +17,7 @@ maps, both seats). Self-play overstates arena gains.
 | v1.5 | **state merging** in the search (a snake's node is its head cell, facing and depth parity; second depth step 2000 iterations); Voronoi flood capped at 14 steps; speed pass (about 5% on x86); packed source without end-of-line comments | vs v1.4b, real time: −21, +38, +21 (+13 ± 36); the same source with plain trees +28, +42, +24 (+31 ± 37) | **33.61** | **3** |
 | v1.6 | plain trees again (shared states were level over 1,600 real-time games and in the arena); net n3a trained on 120k games played by the v1.4b logic (generation 3; held-out accuracy 85.9%) | vs v1.5, real time, four batches of 50: +28, +78, −21, −92 (**0 ± 43**). Submitted at the user's wish | **33.11**: half a point under v1.4b / v1.5, replaced | 3 |
 | v1.7 | v1.5's source with plain trees and the net n2a again (the net that scored 33.6–33.7); root safety and survival checks in the source, off | | replaced by v1.8 during its run (30.4 at 15% was the last reading) | |
-| v1.8 | **room of each snake** (cells its head reaches in 4 moves, a cost under 8: `EV_SPACE` 1) and **standing on another snake counts as support** when a snake's reach is read (`SNK_SUP`); packed without comment lines | real time vs the same build without them: room +70, +35, −56; support +14, +56, −24, +85 (+33 ± 31); both +45; the packed file vs v1.7 +21 (50 games). Submitted at the user's wish | running | |
+| v1.8 | **room of each snake** (cells its head reaches in 4 moves, a cost under 8: `EV_SPACE` 1) and **standing on another snake counts as support** when a snake's reach is read (`SNK_SUP`); packed without comment lines | real time vs the same build without them: room +70, +35, −56; support +14, +56, −24, +85 (+33 ± 31); both +45; the packed file vs v1.7 +21 (50 games). Submitted at the user's wish | **33.06**; against the top two the wall hits did not fall (0.45 a game, theirs 0.03); sZoom +0 −13 =3, _H3R0_ +3 −11 =1 | **3** |
 
 ## Measurements
 
@@ -122,6 +122,11 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | **Standing on another snake counts as support** in `reachIdx` (`SNK_SUP`), real-time self-play | 400 | +14, +56, −24, +85: **+33 ± 31** |
 | **Room of each snake** (`EV_SPACE`): cells its head reaches in 4 moves by a flood of its own; cost × (8 − cells) / 8. Weight 1; 2.5; 1.5 with threshold 12 | 300; 100; 100 | +70, +35, −56; −14; 0 |
 | Both together; the packed v1.8 against v1.7 | 100; 50 | +45; +21 |
+| **Trap incidents replayed on rails** (`tools/rail.py`): the 38 wall incidents against the top two restarted 8 turns earlier, our build playing our snakes for 14 turns against his recorded moves. Shut in again / wall hits / our length change: v1.7 settings; v1.4b; v1.8; v1.8 + survival check; v1.8 + worst-case check + survival | 38 | 20 / 43 / −19; 18 / 43 / 0; 17 / 34 / −8; 13 / 30 / −10; **13 / 26 / +2** |
+| Those two checks on top of v1.8 in real-time self-play (`SAFE` 2 with two enemies; `SAFE` 3 with one within 3 cells) | 100 each | −45; −28 |
+| Kaggle, real time: `SNK_SUP` alone; `EV_SPACE` alone | 400 each | +13 ± 31; +21 ± 32 |
+| **Opponent on rails as a strength test** (`tools/railset.py`): 702 stretches of 15 turns from the games against _H3R0_, margin gained per stretch. v1.4b; v1.2; v1.3; v1.6; v1.8 | 702 | +0.04; **+0.74**; +0.29; +0.34; +0.37 (± 0.12): the weakest version scores best. Not a strength test |
+| **Agreement with the top players' moves** (`tools/agree.py`): share of their real decisions (a snake with at least two legal moves) for which our search at 2000 iterations picks the move they played. _H3R0_ (14,220 decisions); sZoom (16,578) | — | 60.6%; 59.1% |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -449,6 +454,20 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   head on the rows the Voronoi already builds.
 - The packed source reached 99,719 characters again; `pack.py` now also drops the comment
   lines when dropping the end-of-line comments is not enough (91.1k).
+
+- **v1.8 did not stop the traps in real games.** On the old incidents replayed on rails it
+  is shut in less often than v1.7; in its own arena games against the top two the wall
+  hits are where they were (0.45 a game). Its four incidents show what _H3R0_ does: one
+  of his snakes comes down onto the cell above or beside our head while ours is on the
+  floor next to a wall. He moves in on purpose; a fixed recording of his old moves cannot
+  show that.
+- **An opponent who does not answer is not a test of strength.** With his snakes on their
+  recorded moves the plain greedy v1.2 gains most and v1.4b least: the order of the arena
+  upside down. The wall hits it counts are still worth reading; the margin is not.
+- **What can be measured fast against the top players is agreement**: whether our search,
+  for his snakes in his positions, picks the move he played. It needs no match, runs in
+  under a minute on 14,000 decisions, and every switch of the evaluation can be scored on
+  it. The assumption is that the first of the arena chooses better than we do.
 
 ## Arena notes
 
