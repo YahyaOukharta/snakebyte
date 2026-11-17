@@ -6,7 +6,7 @@ byte board, a Smitsimax search (one tree per snake) and a handcrafted evaluation
 gravity-aware distances and per-snake credit.
 
 Started at rank 328 of 394 in Legend (17.91) with the March 2026 contest bot
-(`league/src/legacy.cpp`). Current: v1.5, in its arena run (2026-11-17); v1.4b finished at **33.68, rank 3**. Per-version results and every measurement: [docs/history.md](docs/history.md).
+(`league/src/legacy.cpp`). Current: v1.6, in its arena run (2026-11-17); v1.5 finished at **33.61, rank 3**. Per-version results and every measurement: [docs/history.md](docs/history.md).
 
 | Stage | Arena score | Rank (Legend) |
 |---|---|---|
@@ -16,7 +16,8 @@ Started at rank 328 of 394 in Legend (17.91) with the March 2026 contest bot
 | v1.2: path-based reach model, taller board model | 32.14 | 3 |
 | v1.3: walls-only reach tables, Voronoi apple territory, value net, SPSA parameters | 33.30 | 3 |
 | v1.4b: net on new inputs, distance cost flat near and steep far, 38 ms per turn | 33.68 | 3 |
-| v1.5: state merging in the search, speed pass | running | |
+| v1.5: state merging in the search, speed pass | 33.61 | 3 |
+| v1.6: plain trees, net on games of the current bot | running | |
 
 The arena's first two (_H3R0_ 36.9, sZoom 36.8) are five points clear of the third (31.9).
 

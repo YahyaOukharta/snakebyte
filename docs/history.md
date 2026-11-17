@@ -14,7 +14,8 @@ maps, both seats). Self-play overstates arena gains.
 | v1.3 | reach tables hold on walls only (an eaten apple was support for ever); Voronoi apple territory at the leaves (flood from the heads on bit rows, bodies block), weight 0.25; value net n0b added to the handcrafted value (72 → 96 → 32 → 1, column-form forward pass); 15 parameters from SPSA; reach table with the apple index innermost | vs v1.2: real time +60 −21 =19 (**+143 ± 66**) | **33.30**; 159 battles: +81 −60 =18 (sZoom +3 −17 =3, _H3R0_ +4 −14 =2, ranks 4–9 +51 −28) | **3** |
 | v1.4 | net n2a on 83 inputs (adds Voronoi apples per side, soft ownership, reachable apples per snake; trained on records re-exported with walls-only tables); distance cost flat near and steep far (0.02 × 6 cells + 0.045 × 20 instead of 0.07 × 11 + 0.015 × 16); reach tables limited to the grid plus a margin, with a 700 ms guard | vs v1.3: real time +54 −21 =25 (**+119 ± 62**), 3000 iterations +96 ± 66 | 31.0 at 33% with 5 timeouts in 35 battles: replaced | |
 | v1.4b | v1.4 with 38 ms per turn instead of 44 | | **33.68**; no timeout of ours in the battles checked | **3** |
-| v1.5 | **state merging** in the search (a snake's node is its head cell, facing and depth parity; second depth step 2000 iterations); Voronoi flood capped at 14 steps; speed pass (about 5% on x86); packed source without end-of-line comments | vs v1.4b, real time: −21, +38, +21 (+13 ± 36); the same source with plain trees +28, +42, +24 (+31 ± 37) | running | |
+| v1.5 | **state merging** in the search (a snake's node is its head cell, facing and depth parity; second depth step 2000 iterations); Voronoi flood capped at 14 steps; speed pass (about 5% on x86); packed source without end-of-line comments | vs v1.4b, real time: −21, +38, +21 (+13 ± 36); the same source with plain trees +28, +42, +24 (+31 ± 37) | **33.61** | **3** |
+| v1.6 | plain trees again (shared states were level over 1,600 real-time games and in the arena); net n3a trained on 120k games played by the v1.4b logic (generation 3; held-out accuracy 85.9%) | vs v1.5, real time, four batches of 50: +28, +78, −21, −92 (**0 ± 43**). Submitted at the user's wish | running | |
 
 ## Measurements
 
@@ -106,6 +107,9 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | **Ablation** of what v1.3 and v1.4 shipped as bundles: the current build (plain trees) with one part changed, real time against the full build. Net off; elevation 0.04 → 0.01; win bonus 8.7 → 4; live-snake term off; Voronoi off; value scale, own-credit weight, UCB and ownership back to their values before SPSA; distance cost back to the old shape | 100 each | **−92**; +28; −14; +17; −24; **−70**; +3 |
 | Elevation 0.01 and no live-snake term together, on the v1.5 configuration | 200 | +3, +7 |
 | Merging k = 2 with value-to-go (`TOGO`: a node is backed up without the gains made before it) and the slow schedule, vs plain trees, on Kaggle | 400, 7000 it | +14 ± 30 |
+| Plain trees vs merged (v1.5), **real time on Kaggle**, both accounts; merged with value-to-go vs merged | 1600; 800 | −20, −9, +15, −10 (**−6 ± 15**: level); −15, −21 |
+| Net n3a (generation 3: 120k games by the v1.4b logic at 2000 iterations, one position in five, 12 epochs; held-out accuracy 85.9%) on plain trees vs v1.5, real time | 4 × 50 | +28, +78, −21, −92: 0 ± 43 |
+| n3b: the same with 40% search score in the target | 50 | +7 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -375,6 +379,15 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   generation 3 was redone at one position in eight with four processes (1.4 GB). Old
   exports are deleted once a net is trained from them: the game records (a few hundred
   bytes per game) are what is kept.
+
+- **Fresh self-play data did not move the net.** Generation 3 was played by the current
+  logic with truthful tables; the net trained on it predicts its own games better
+  (85.9% against 81.1%) and plays exactly as well as the old one. Higher accuracy here
+  means the games became more predictable, not that the net knows more.
+- **Batches of 50 swing by ± 88 Elo**: the four batches of the same pair read +28, +78,
+  −21, −92. They are good for early news and bad for decisions; the sum is what counts.
+- A sanity check before a submission must look at *our* timeouts ("$0 has not provided"
+  when we are first), not at any timeout in the log: the opponent's stopped a submit.
 
 ## Arena notes
 
