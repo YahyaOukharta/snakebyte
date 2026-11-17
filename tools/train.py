@@ -26,7 +26,10 @@ ap.add_argument("--h2", type=int, default=H2)
 a = ap.parse_args()
 
 files = sorted(sum((glob.glob(f) for f in a.files), []))
-data = np.concatenate([np.fromfile(f, dtype=np.float32).reshape(-1, NF + 3) for f in files])
+def load(f):                                              # a file cut short loses its last partial record
+    x = np.fromfile(f, dtype=np.float32)
+    return x[:len(x) // (NF + 3) * (NF + 3)].reshape(-1, NF + 3)
+data = np.concatenate([load(f) for f in files])
 rng = np.random.default_rng(1)
 rng.shuffle(data)
 nval = min(len(data) // 20, 200000)

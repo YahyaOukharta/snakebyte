@@ -318,9 +318,7 @@ PARAM(EV_K, 6.0);        // value = tanh(raw / EV_K)
 PARAM(EV_WIN, 4.0);      // bonus for a decided game
 PARAM(EV_LOSS, 0.05);    // losses difference (the tie-break)
 PARAM(EV_OWN, 0.25);     // apple closer to me than to the opponent
-PARAM(EV_DIST, 0.03);    // distance of each snake to its nearest apple
 PARAM(EV_ELEV, 0.01);    // height of the head
-PARAM(EV_GRAV, 1);       // 1: gravity-aware apple distances, 0: plain BFS
 PARAM(EV_S1, 0.08);      // nearest reachable apple: cost per cell for the first EV_N1 cells ...
 PARAM(EV_N1, 8); 
 PARAM(EV_S2, 0.015);     // ... and per cell for the next EV_N2. The total stays below one apple,
@@ -331,8 +329,11 @@ PARAM(POL_EPS, 8);       // one first visit in POL_EPS ignores that order
 PARAM(REUSE, 0);         // tree reuse: share of last turn's statistics kept under the moves played (0 = off)
 PARAM(EV_GLOB, 1.0);     // weight of the shared value in a snake's own tree
 PARAM(EV_OWNS, 0);       // credit to the snake that is nearest to an apple its side owns
-PARAM(NET_A, 4.0);       // with a net: raw = NET_MIX * handcrafted + NET_A * logit of the net
-PARAM(NET_MIX, 0);
+PARAM(NET_A, 2.0);       // with a net: raw = NET_MIX * handcrafted + NET_A * logit of the net
+PARAM(NET_MIX, 1.0);
+PARAM(EV_ALIVE, 0);      // per live snake more than the opponent
+PARAM(EV_UG, 0);         // a snake with no apple in reach: cost per cell to the nearest apple a longer snake could reach
+PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, so the squash stays in its steep part
 PARAM(EV_MEAN, 0.5);     // share of the mean length difference along the line (eat sooner)
 PARAM(D_BASE, 3);        // depth = D_BASE + iterations / D_STEP1 until D_SW iterations ...
 PARAM(D_STEP1, 250);
@@ -343,29 +344,8 @@ PARAM(TIME_MS, 44);      // per turn, counted from the first input line of the t
 PARAM(TIME_FIRST, 850);
 
 // ───────────────────────────── apple distances ─────────────────────────────
-// Plain BFS (no gravity) from every apple of the first turn through non-wall cells.
-static uint8_t adist[MAXA][CELLS];
-static int appleCell[MAXA], nApple0;
-static uint8_t baseOcc[CELLS];   // walls and VOID only
-
-static void bfsApple(int a) {
-    static uint16_t q[CELLS];
-    uint8_t *d = adist[a];
-    memset(d, 255, CELLS);
-    int qh = 0, qt = 0;
-    q[qt++] = appleCell[a];
-    d[appleCell[a]] = 0;
-    while (qh < qt) {
-        int c = q[qh++];
-        if (d[c] >= 250) continue;
-        for (int k = 0; k < 4; k++) {
-            int n = c + DELTA[k];
-            if (baseOcc[n] >= WALL || d[n] != 255) continue;
-            d[n] = d[c] + 1;
-            q[qt++] = n;
-        }
-    }
-}
+static int appleCell[MAXA], nApple0;     // the apples of the first turn
+static uint8_t baseOcc[CELLS];           // walls and VOID only
 
 // Gravity-aware distances.
 // The body of a snake lies on the last cells of its head's path, so the snake holds only
@@ -456,7 +436,7 @@ static void initDistances(const State &S) {
     bfsSupport(S.occ);
     free(gd);
     gd = (uint8_t *)malloc((size_t)nApple0 * NL * LMAX * CELLS);
-    for (int a = 0; a < nApple0; a++) bfsApple(a), bfsGravity(a);
+    for (int a = 0; a < nApple0; a++) bfsGravity(a);
 }
 
 // ───────────────────────────── value net ─────────────────────────────
@@ -465,33 +445,53 @@ static void initDistances(const State &S) {
 // logit of "p wins".
 enum { NF_G = 16, NF_S = 7, NF = NF_G + 8 * NF_S, NH1 = 96, NH2 = 32 };
 
-static void features(const State &S, int p, float *f) {
-    memset(f, 0, sizeof(float) * NF);
-    int d1[MAXS], d2[MAXS], own[MAXS], rl[MAXS], rr[MAXS];
+// One pass over apples x snakes: everything the evaluation and the net inputs need.
+struct Scan {
+    int d1[MAXS], d2[MAXS];      // distance of each snake to its nearest and second nearest reachable apple (255: none)
+    int du[MAXS];                // distance to the nearest apple for the longest snake of the tables, run 0
+    int own[MAXS];               // apples this snake is the nearest of all to
+    int owned[2], contested, unreach;
+    float prox[2];               // sum over owned apples of 1 / (1 + distance)
+};
+static void scanApples(const State &S, Scan &c) {
+    int rl[MAXS], rr[MAXS];
     for (int i = 0; i < NS; i++) {
-        d1[i] = d2[i] = 255, own[i] = 0, rl[i] = rr[i] = 0;
+        c.d1[i] = c.d2[i] = c.du[i] = 255, c.own[i] = 0, rl[i] = rr[i] = 0;
         if (S.s[i].alive) reachIdx(S, i, rl[i], rr[i]);
     }
-    int owned[2] = {0, 0}, contested = 0, unreach = 0;
-    float prox[2] = {0, 0};
+    c.owned[0] = c.owned[1] = c.contested = c.unreach = 0;
+    c.prox[0] = c.prox[1] = 0;
     for (int a = 0; a < nApple0; a++) {
         if (S.occ[appleCell[a]] != APPLE) continue;
         int m[2] = {255, 255}, im[2] = {0, 0};
         for (int i = 0; i < NS; i++) {
             if (!S.s[i].alive) continue;
             int v = GD(a, rl[i], rr[i])[S.s[i].head()];
-            if (v < d1[i]) d2[i] = d1[i], d1[i] = v;
-            else if (v < d2[i]) d2[i] = v;
+            if (v < c.d1[i]) c.d2[i] = c.d1[i], c.d1[i] = v;
+            else if (v < c.d2[i]) c.d2[i] = v;
             int o = OWNER[i];
             if (v < m[o]) m[o] = v, im[o] = i;
         }
-        if (m[0] == 255 && m[1] == 255) unreach++;
-        else if (m[0] == m[1]) contested++;
+        if (EV_UG != 0)
+            for (int i = 0; i < NS; i++)
+                if (S.s[i].alive) {
+                    int v = GD(a, NL - 1, 0)[S.s[i].head()];
+                    if (v < c.du[i]) c.du[i] = v;
+                }
+        if (m[0] == 255 && m[1] == 255) c.unreach++;
+        else if (m[0] == m[1]) c.contested++;
         else {
             int o = m[0] < m[1] ? 0 : 1;
-            owned[o]++, own[im[o]]++, prox[o] += 1.0f / (1 + m[o]);
+            c.owned[o]++, c.own[im[o]]++, c.prox[o] += 1.0f / (1 + m[o]);
         }
     }
+}
+
+static void fillFeatures(const State &S, int p, const Scan &c, float *f) {
+    memset(f, 0, sizeof(float) * NF);
+    const int *d1 = c.d1, *d2 = c.d2, *own = c.own, *owned = c.owned;
+    const int contested = c.contested, unreach = c.unreach;
+    const float *prox = c.prox;
     int q = 1 - p;
     f[0] = S.turn / 200.0f;
     f[1] = S.napples / 32.0f;
@@ -524,27 +524,51 @@ static void features(const State &S, int p, float *f) {
     }
 }
 
+static void features(const State &S, int p, float *f) {
+    Scan c;
+    scanApples(S, c);
+    fillFeatures(S, p, c, f);
+}
+
 static float NW1[NH1][NF], NB1[NH1], NW2[NH2][NH1], NB2[NH2], NW3[NH2], NB3;
 static bool netLoaded = false;
 
+// Dot products are written as eight running sums so that the compiler turns them into
+// 8-wide vector code without -ffast-math (CodinGame compiles without flags).
+static inline float dot8(const float *w, const float *x, int n) {
+    float acc[8] = {0, 0, 0, 0, 0, 0, 0, 0};
+    for (int k = 0; k < n; k += 8)
+        for (int t = 0; t < 8; t++) acc[t] += w[k + t] * x[k + t];
+    return ((acc[0] + acc[1]) + (acc[2] + acc[3])) + ((acc[4] + acc[5]) + (acc[6] + acc[7]));
+}
 static float netForward(const float *f) {
     float h1[NH1], h2[NH2];
     for (int j = 0; j < NH1; j++) {
-        float a = NB1[j];
-        const float *w = NW1[j];
-        for (int k = 0; k < NF; k++) a += w[k] * f[k];
+        float a = NB1[j] + dot8(NW1[j], f, NF);
         h1[j] = a > 0 ? a : 0;
     }
     for (int j = 0; j < NH2; j++) {
-        float a = NB2[j];
-        const float *w = NW2[j];
-        for (int k = 0; k < NH1; k++) a += w[k] * h1[k];
+        float a = NB2[j] + dot8(NW2[j], h1, NH1);
         h2[j] = a > 0 ? a : 0;
     }
-    float o = NB3;
-    for (int k = 0; k < NH2; k++) o += NW3[k] * h2[k];
-    return o;
+    return NB3 + dot8(NW3, h2, NH2);
 }
+#ifdef NETW_DATA
+// Weights written by tools/pack.py: every value is 16 bits (three characters, 6 bits each,
+// from '0'; '{' and '|' stand for the backslash and the question mark), times the scale of
+// its array.
+static inline int dig(char c) { return c == '{' ? 44 : c == '|' ? 15 : c - 48; }
+static void loadEmbedded() {
+    static const char *p = NETW_DATA;
+    static const float sc[6] = {NETW_SCALES};
+    float *arr[6] = {&NW1[0][0], NB1, &NW2[0][0], NB2, NW3, &NB3};
+    const int cnt[6] = {NH1 * NF, NH1, NH2 * NH1, NH2, NH2, 1};
+    for (int a = 0; a < 6; a++)
+        for (int i = 0; i < cnt[a]; i++, p += 3)
+            arr[a][i] = ((dig(p[0]) << 12 | dig(p[1]) << 6 | dig(p[2])) - 32768) * sc[a];
+    netLoaded = true;
+}
+#endif
 #ifdef LOCAL
 static void loadNet(const char *path) {                      // raw float32: W1 b1 W2 b2 W3 b3
     FILE *fp = fopen(path, "rb");
@@ -574,45 +598,23 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
         for (int i = 0; i < NS; i++) own[i] = S.s[i].alive ? S.s[i].len - root.s[i].len : -(double)root.s[i].len;
         return raw;
     }
-    int best[MAXS], rl[MAXS], rr[MAXS], ownA[MAXS] = {0};
-    const bool grav = EV_GRAV != 0;
-    for (int i = 0; i < NS; i++) {
-        best[i] = 255;
-        if (grav && S.s[i].alive) reachIdx(S, i, rl[i], rr[i]);
-    }
-    for (int a = 0; a < nApple0; a++) {
-        if (S.occ[appleCell[a]] != APPLE) continue;
-        const uint8_t *d = adist[a];
-        int m0 = 255, m1 = 255, i0 = 0, i1 = 0;
-        for (int i = 0; i < NS; i++) {
-            if (!S.s[i].alive) continue;
-            int hd = S.s[i].head(), v = d[hd];
-            if (grav) {
-                v = GD(a, rl[i], rr[i])[hd];                 // 255: out of reach for this snake
-            }
-            if (v < best[i]) best[i] = v;
-            if (OWNER[i] == 0) { if (v < m0) m0 = v, i0 = i; }
-            else if (v < m1) m1 = v, i1 = i;
-        }
-        if (m0 < m1) raw += EV_OWN, ownA[i0]++;             // (an apple nobody can reach counts for nobody)
-        else if (m1 < m0) raw -= EV_OWN, ownA[i1]++;
-    }
+    Scan c;
+    scanApples(S, c);
+    raw += EV_OWN * (c.owned[0] - c.owned[1]) + EV_ALIVE * (S.alive[0] - S.alive[1]);              // an apple nobody can reach, or a tie, counts for nobody
     for (int i = 0; i < NS; i++) {
         if (!S.s[i].alive) continue;
-        double dc;
-        if (grav) {
-            int far = best[i] - (int)EV_N1;
-            dc = best[i] <= EV_N1 ? EV_S1 * best[i] : EV_S1 * EV_N1 + EV_S2 * (far < EV_N2 ? far : EV_N2);
-        } else dc = EV_DIST * min(best[i], 60);
+        int far = c.d1[i] - (int)EV_N1;
+        double dc = c.d1[i] <= EV_N1 ? EV_S1 * c.d1[i] : EV_S1 * EV_N1 + EV_S2 * (far < EV_N2 ? far : EV_N2);
+        if (c.d1[i] == 255 && EV_UG != 0) dc = EV_S1 * EV_N1 + EV_S2 * EV_N2 - EV_UG * (40 - (c.du[i] < 40 ? c.du[i] : 40));
         double v = -dc + EV_ELEV * (H - cy(S.s[i].head()));
         raw += OWNER[i] == 0 ? v : -v;
-        own[i] = S.s[i].len - root.s[i].len - dc + EV_OWNS * ownA[i];
+        own[i] = S.s[i].len - root.s[i].len - dc + EV_OWNS * c.own[i];
     }
     for (int i = 0; i < NS; i++)
         if (!S.s[i].alive) own[i] = -(double)root.s[i].len;
     if (netLoaded && NET_A != 0) {                           // the net replaces the shared value; own[] stays
         float f[NF];
-        features(S, 0, f);
+        fillFeatures(S, 0, c, f);
         return NET_MIX * raw + NET_A * netForward(f);
     }
     return raw;
@@ -745,7 +747,11 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
     int iters = 0, depth = (int)D_BASE;
     int rootDiff = root.len[0] - root.len[1];
     int sims = 0;
-    double scoreSum = 0;
+    double scoreSum = 0, rootRaw = 0;
+    if (CENTER != 0 && !root.terminal()) {
+        double tmp[MAXS];
+        rootRaw = evaluate(root, rootDiff, root, tmp);
+    }
     for (int i = 0; i < NS; i++) {
         if (!root.s[i].alive) continue;
         uint8_t *F = nearF[i];
@@ -800,6 +806,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         double own[MAXS];
         double raw = evaluate(S, d ? rootDiff + sum / d : rootDiff, root, own);
         scoreSum += squash(raw / EV_K);
+        raw -= rootRaw;
         float val[MAXS];                                     // value for each snake's tree, player 0's view
         for (int i = 0; i < NS; i++)
             val[i] = squash((EV_GLOB * raw + (OWNER[i] == 0 ? EV_SELF : -EV_SELF) * own[i]) / EV_K);
@@ -907,6 +914,9 @@ int main() {
     for (int i = 0; i < per; i++) scanf("%d", &CGID[i]), OWNER[i] = 0;
     for (int i = 0; i < per; i++) scanf("%d", &CGID[per + i]), OWNER[per + i] = 1;
     initSearch();
+#ifdef NETW_DATA
+    loadEmbedded();
+#endif
 #ifdef LOCAL
     if (getenv("SB_ITERS")) fixedIters = atol(getenv("SB_ITERS"));
     if (getenv("SB_SEED")) rngS ^= strtoull(getenv("SB_SEED"), 0, 10) * 0x2545F4914F6CDD1DULL;
@@ -960,7 +970,10 @@ int main() {
             }
         }
         cur.recount();
-        if (turnNo == 0) initDistances(cur);
+        if (turnNo == 0) {
+            initDistances(cur);
+            fprintf(stderr, "tables %.0f ms, %d apples, %dx%d\n", chrono::duration<double, milli>(chrono::steady_clock::now() - t0).count(), nApple0, W, H);
+        }
         bool synced = true;
         if (havePrev) {
             synced = resync();
@@ -1011,6 +1024,16 @@ int main() {
         double ms = chrono::duration<double, milli>(chrono::steady_clock::now() - t0).count();
         fprintf(stderr, "t%d it %d d %d sims %d nodes %d %.1fms desync %d L %d/%d score %d-%d apples %d\n", turnNo, lastIters,
                 lastDepth, lastSims, poolN, ms, desyncs, cur.losses[0], cur.losses[1], cur.len[0], cur.len[1], cur.napples);
+#ifdef DUMPQ                                                 // root statistics of my snakes: visits and mean value per move
+        for (int i = 0; i < NS; i++) {
+            if (OWNER[i] != 0 || !cur.s[i].alive) continue;
+            const Node &x = pool[keptRoots[i]];
+            fprintf(stderr, " Q snake %d len %d head %d,%d:", CGID[i], cur.s[i].len, cx(cur.s[i].head()), cy(cur.s[i].head()));
+            for (int d = 0; d < 4; d++)
+                if (x.n[d] > 0) fprintf(stderr, " %s %.0f %+.3f", DNAME[d], x.n[d], x.w[d] / x.n[d]);
+            fprintf(stderr, "\n");
+        }
+#endif
 #ifdef DUMP                                                  // board every DUMP turns, and whenever a snake died or the simulator disagreed
         static int liveBefore = -1;
         int liveNow = cur.alive[0] + cur.alive[1];
