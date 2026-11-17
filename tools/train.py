@@ -10,7 +10,7 @@ raw float32 in the order the engine reads: W1 b1 W2 b2 W3 b3.
 """
 import argparse, glob, numpy as np, torch, torch.nn as nn, time
 
-NF, H1, H2 = 72, 96, 32
+NF, H1, H2 = 83, 96, 32
 ap = argparse.ArgumentParser()
 ap.add_argument("files", nargs="+")
 ap.add_argument("-o", "--out", required=True)

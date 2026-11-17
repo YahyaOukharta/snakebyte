@@ -71,6 +71,11 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Walls-only tables **and** Voronoi 0.25 vs the tuned n0b hybrid; the same with `EV_STUCK` 2 | 100 each, 3000 it | **+111 ± 66**; +92 |
 | That build (v1.3) vs v1.2, **real time** | 100 | **+143 ± 66** (+60 −21 =19) |
 | Gauntlet (CodinGame test games, first seat) of the tuned n0b hybrid before these two changes: vs _H3R0_ / vs sZoom | 16 / 15 | +4 −11 =1 / **+0 −15** |
+| After v1.3 — Voronoi: tail parts ignored 3 instead of 1; weight 0.35; flood capped at 14 steps; static ownership 0.1 | 100 each, 3000 it | −14; +67; +35; −28 |
+| Voronoi weight 0.45; weight 0.35 with 14 steps | 100 each, 3000 it | −67; −70: the +67 of 0.35 was noise, 0.25 stays |
+| Soft apple ownership (`EV_SOFT`): per apple tanh((opponent's distance − mine) / 3) instead of the 0/1 ownership, weight 0.2 / 0.4; 0.2 on top of it; 0.3 with scale 6 | 100 each, 3000 it | +49 / −42; −38; −7: off |
+| Root safety (`THREAT`): my snakes do not enter a cell an enemy head can enter this turn, except apple cells / including them | 100 each, 3000 it | −56 / −78: off |
+| Gauntlet of v1.3, first seat: vs sZoom / vs _H3R0_ | 15 each | +2 −11 =2 / +2 −10 =3 (before: +0 −15 / +4 −11 =1); most losses now by 1–3 points |
 
 ## What was learned
 
@@ -191,6 +196,15 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   (`cg.py test out/dump.cpp --replay GAME`) is the fastest way to such a fault.
 - A column cut off by `cut -c1-60` reads "dist 1" for "dist 13": print the whole line
   before believing a bug.
+
+- **A lost endgame is lost earlier.** In a v1.3 game against sZoom we led 39–37 with ten
+  apples left and lost 41–44. At that point their four heads were already next to seven
+  of the ten (three of them a cluster in the top corner, reached up a wall column by a
+  length-7 snake standing on a live apple at the end); ours had been eating the nearest
+  apple each. They take the contested and far apples first and leave the safe ones.
+- **Single-parameter tests at 100 games have stopped telling anything**: after v1.3 the
+  same change measures +67 and −70 in two batches. Changes of this size need 400+ games
+  or a different kind of evidence (gauntlet, dumps).
 
 ## Arena notes
 

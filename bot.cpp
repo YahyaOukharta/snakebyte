@@ -334,6 +334,10 @@ PARAM(NET_MIX, 1.0);
 PARAM(EV_ALIVE, 1.39);      // per live snake more than the opponent
 PARAM(EV_UG, 0.0065);         // a snake with no apple in reach: cost per cell to the nearest apple a longer snake could reach
 PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, so the squash stays in its steep part
+PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
+PARAM(EV_SOFT, 0);       // soft apple ownership: per apple, tanh((opponent's distance - mine) / SOFT_T)
+PARAM(SOFT_T, 3);        // ... so that getting nearer to a contested apple pays more than to a safe one
+PARAM(SOFT_CAP, 40);     // distance used for "cannot reach"
 PARAM(EV_STUCK, 0);      // extra cost for a snake with no apple in reach: it will not grow again
 PARAM(EV_VOR, 0.25);        // per apple more in my Voronoi territory than in the opponent's (flood from the heads, bodies block)
 PARAM(EV_VORC, 0);       // per cell of territory more
@@ -522,20 +526,26 @@ static void voronoi(const State &S, Vor &v) {
 // Inputs: 16 numbers about the game and 7 per snake (4 slots per side, longest first), all
 // from the point of view of player p. One hidden pair of layers, ReLU, one output: the
 // logit of "p wins".
-enum { NF_G = 16, NF_S = 7, NF = NF_G + 8 * NF_S, NH1 = 96, NH2 = 32 };
+enum { NF_G = 19, NF_S = 8, NF = NF_G + 8 * NF_S, NH1 = 96, NH2 = 32 };
 
 // One pass over apples x snakes: everything the evaluation and the net inputs need.
 struct Scan {
     int d1[MAXS], d2[MAXS];      // distance of each snake to its nearest and second nearest reachable apple (255: none)
     int du[MAXS];                // distance to the nearest apple for the longest snake of the tables, run 0
     int own[MAXS];               // apples this snake is the nearest of all to
+    int cnt[MAXS];               // apples this snake can reach
     int owned[2], contested, unreach;
     float prox[2];               // sum over owned apples of 1 / (1 + distance)
+    float soft;                  // sum over apples of softT[opponent's distance - mine] (player 0's view)
 };
+static float softT[129];             // tanh((margin - 64) / SOFT_T)
+static struct SoftInit {
+    SoftInit() { for (int i = 0; i < 129; i++) softT[i] = tanhf((i - 64) / (float)SOFT_T); }
+} softInit;
 static void scanApples(const State &S, Scan &c) {
     const uint8_t *row[MAXS], *rowU[MAXS];                   // each snake's distances to all apples
     for (int i = 0; i < NS; i++) {
-        c.d1[i] = c.d2[i] = c.du[i] = 255, c.own[i] = 0;
+        c.d1[i] = c.d2[i] = c.du[i] = 255, c.own[i] = c.cnt[i] = 0;
         if (!S.s[i].alive) continue;
         int l, r;
         reachIdx(S, i, l, r);
@@ -544,12 +554,15 @@ static void scanApples(const State &S, Scan &c) {
     }
     c.owned[0] = c.owned[1] = c.contested = c.unreach = 0;
     c.prox[0] = c.prox[1] = 0;
+    c.soft = 0;
+    const int cap = (int)SOFT_CAP;
     for (int a = 0; a < nApple0; a++) {
         if (S.occ[appleCell[a]] != APPLE) continue;
         int m[2] = {255, 255}, im[2] = {0, 0};
         for (int i = 0; i < NS; i++) {
             if (!S.s[i].alive) continue;
             int v = row[i][a];
+            c.cnt[i] += v != 255;
             if (v < c.d1[i]) c.d2[i] = c.d1[i], c.d1[i] = v;
             else if (v < c.d2[i]) c.d2[i] = v;
             int o = OWNER[i];
@@ -561,6 +574,7 @@ static void scanApples(const State &S, Scan &c) {
                     int v = rowU[i][a];
                     if (v < c.du[i]) c.du[i] = v;
                 }
+        if (m[0] != 255 || m[1] != 255) c.soft += softT[64 + (m[1] < cap ? m[1] : cap) - (m[0] < cap ? m[0] : cap)];
         if (m[0] == 255 && m[1] == 255) c.unreach++;
         else if (m[0] == m[1]) c.contested++;
         else {
@@ -570,7 +584,7 @@ static void scanApples(const State &S, Scan &c) {
     }
 }
 
-static void fillFeatures(const State &S, int p, const Scan &c, float *f) {
+static void fillFeatures(const State &S, int p, const Scan &c, const Vor &vr, float *f) {
     memset(f, 0, sizeof(float) * NF);
     const int *d1 = c.d1, *d2 = c.d2, *own = c.own, *owned = c.owned;
     const int contested = c.contested, unreach = c.unreach;
@@ -586,6 +600,8 @@ static void fillFeatures(const State &S, int p, const Scan &c, float *f) {
     f[11] = contested / 16.0f, f[12] = unreach / 16.0f;
     f[13] = H / 24.0f;
     f[14] = prox[p] / 8.0f, f[15] = prox[q] / 8.0f;
+    f[16] = vr.ap[p] / 16.0f, f[17] = vr.ap[q] / 16.0f;
+    f[18] = (p ? -c.soft : c.soft) / 16.0f;
     int per = NS / 2;
     for (int side = 0; side < 2; side++) {
         int o = side == 0 ? p : q, idx[4], n = 0;
@@ -603,14 +619,17 @@ static void fillFeatures(const State &S, int p, const Scan &c, float *f) {
             g[4] = d1[i] != 255;
             g[5] = (H - cy(S.s[i].head())) / 24.0f;
             g[6] = own[i] / 8.0f;
+            g[7] = c.cnt[i] / 16.0f;
         }
     }
 }
 
 static void features(const State &S, int p, float *f) {
     Scan c;
+    Vor v;
     scanApples(S, c);
-    fillFeatures(S, p, c, f);
+    voronoi(S, v);
+    fillFeatures(S, p, c, v, f);
 }
 
 static float NW1[NH1][NF], NB1[NH1], NW2[NH2][NH1], NB2[NH2], NW3[NH2], NB3;
@@ -701,9 +720,10 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
     }
     Scan c;
     scanApples(S, c);
-    raw += EV_OWN * (c.owned[0] - c.owned[1]) + EV_ALIVE * (S.alive[0] - S.alive[1]);              // an apple nobody can reach, or a tie, counts for nobody
-    if (EV_VOR != 0 || EV_VORC != 0) {
-        Vor v;
+    raw += EV_SOFT * c.soft + EV_OWN * (c.owned[0] - c.owned[1]) + EV_ALIVE * (S.alive[0] - S.alive[1]);              // an apple nobody can reach, or a tie, counts for nobody
+    Vor v;
+    const bool useNet = netLoaded && NET_A != 0;
+    if (EV_VOR != 0 || EV_VORC != 0 || useNet) {
         voronoi(S, v);
         raw += EV_VOR * (v.ap[0] - v.ap[1]) + EV_VORC * (v.cells[0] - v.cells[1]);
     }
@@ -719,9 +739,9 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
     }
     for (int i = 0; i < NS; i++)
         if (!S.s[i].alive) own[i] = -(double)root.s[i].len;
-    if (netLoaded && NET_A != 0) {                           // the net replaces the shared value; own[] stays
+    if (useNet) {                                            // the net's logit is added to the handcrafted value; own[] stays
         float f[NF];
-        fillFeatures(S, 0, c, f);
+        fillFeatures(S, 0, c, v, f);
         return NET_MIX * raw + NET_A * netForward(f);
     }
     return raw;
@@ -874,6 +894,23 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
             }
         }
     }
+    int rootMask[MAXS];                                      // my snakes' moves at the root
+    for (int i = 0; i < NS; i++) {
+        if (!root.s[i].alive || OWNER[i] != 0) continue;
+        int valid = validMask(root, i), safe = valid;
+        if (THREAT != 0)
+            for (int d = 0; d < 4; d++) {
+                if (!(valid >> d & 1)) continue;
+                int c = root.s[i].head() + DELTA[d];
+                if (THREAT < 2 && root.occ[c] == APPLE) continue;
+                for (int j = 0; j < NS; j++) {
+                    if (!root.s[j].alive || OWNER[j] == 0) continue;
+                    int e = c - root.s[j].head();
+                    if ((e == 1 || e == -1 || e == STRIDE || e == -STRIDE) && c != root.s[j].part(1)) safe &= ~(1 << d);
+                }
+            }
+        rootMask[i] = safe ? safe : valid;
+    }
     for (;;) {
         if (fixedIters) { if (iters >= fixedIters) break; }
         else if ((iters & 15) == 0 &&
@@ -894,7 +931,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
             for (int i = 0; i < NS; i++) {
                 pathNode[d][i] = 0;
                 if (!S.s[i].alive) continue;
-                int mask = validMask(S, i);
+                int mask = d == 0 && OWNER[i] == 0 ? rootMask[i] : validMask(S, i);
                 int nd = cur[i], m;
                 if (!nd) {                                   // pool exhausted below this point
                     do m = rnd() & 3; while (!(mask >> m & 1));
