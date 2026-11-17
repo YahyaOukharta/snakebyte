@@ -322,6 +322,28 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   must stay pure bit operations to be vectorised. The cap is now 14 steps (400 games on
   Kaggle: +20 ± 30 against 32).
 
+- **Speed pass on x86** (`tools/kaggle_bench.py`: same positions, fixed iterations and seed,
+  compiled with the instruction sets CodinGame allows, best of five; all steps play
+  identically, checked on 40 games and between the x86 and ARM builds):
+
+  | Step | Total time |
+  |---|---|
+  | Voronoi sweep in AVX2, four rows per instruction | −1.9% |
+  | Apple scan over the apples alive at the root and the live snakes only | ±0 (−3% on the laptop) |
+  | Net layers in explicit AVX | ±0 |
+  | Support recount folded into the pass that writes a fallen snake back | −1.1% |
+  | Tree nodes of exactly one cache line (64 bytes, were 52) and the chosen child prefetched | −1.7% |
+
+  About 5% together. GCC already vectorised the flood, the scan and the net; writing them
+  by hand adds nothing. Profile on the Kaggle Xeon: evaluation 30–39%, falls 23–40%,
+  selection 22–26%, move 12–16%, at 1,150–1,500 ns per simulated turn.
+- **The packed source reached 99,691 of CodinGame's 100,000 characters.** `pack.py` now
+  drops the comments at the end of code lines when the result would pass 96,000 (91.5k
+  after); comments on their own lines stay. The stripped file plays the same games.
+- GCC 13 refuses `#pragma GCC target` in front of the standard headers in a -DLOCAL build
+  ("target specific option mismatch" in std::string); the bench passes the same sets as
+  flags with -DNO_PRAGMA.
+
 ## Arena notes
 
 - v1.0 run: 14.1 at 6%, 17.9 at 19%, 19.0 at 22%, 19.5 at 42%, 19.0 at 54%, then replaced

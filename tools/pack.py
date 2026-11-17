@@ -3,7 +3,8 @@
 
   pack.py -n tools/nets/n0b.bin -o out/sub.cpp [-D NAME=VALUE ...]
 The net (raw float32: W1 b1 W2 b2 W3 b3) is quantised to 16 bits per weight with one scale
-per array and written as text, three characters per weight. The output also compiles with
+per array and written as text, three characters per weight. If the result would pass 96,000
+characters, the comments at the end of code lines are removed (CodinGame's limit is 100,000). The output also compiles with
 -DLOCAL, so the embedded net can be gated on the local referee.
 """
 import argparse, numpy as np, os, re
@@ -35,6 +36,12 @@ for d in a.D:
     src, k = re.subn(r"PARAM\(%s, [^)]*\)" % name, f"PARAM({name}, {val})", src)
     assert k == 1, name
 head = f'#define NETW_DATA "{data}"\n#define NETW_SCALES {", ".join("%.9gf" % s for s in scales)}\n'
+if len(head) + len(src) > 96000:                              # CodinGame takes 100,000 characters: drop the comments at
+    lines = []                                                # the end of code lines, keep the ones on their own lines
+    for l in src.split("\n"):
+        m = None if l.lstrip().startswith("//") else re.search(r'\s+//(?=(?:[^"]*"[^"]*")*[^"]*$)', l)
+        lines.append(l[:m.start()] if m else l)
+    src = "\n".join(lines)
 out = head + src
 open(a.out, "w").write(out)
 print(f"{a.out}: {len(out)} characters ({len(data)} of weights), max quantisation error {worst:.2e}" + ("  OVER 100000" if len(out) > 100000 else ""))

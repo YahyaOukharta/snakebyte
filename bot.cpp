@@ -2,7 +2,7 @@
 // Engine: exact port of the referee's turn (move, eat, behead, fall) on a padded 64x48 board.
 // Search: Smitsimax (one UCT tree per snake, all snakes simulated together).
 // Local tools (fixed iterations, parameters from the environment) are under #ifdef LOCAL.
-#if defined(__x86_64__) && !defined(LOCAL)
+#if defined(__x86_64__) && !defined(NO_PRAGMA)   // CodinGame compiles without flags: these are its -O3 -mavx2
 #pragma GCC optimize("O3,inline,omit-frame-pointer,unroll-loops")
 #pragma GCC target("avx2,bmi,bmi2,popcnt,lzcnt,sse4.1")
 #endif
@@ -232,15 +232,18 @@ struct State {
                     continue;
                 }
                 const uint8_t self = SNAKE + i;
-                int off = m * STRIDE;
-                for (int j = 0; j < k.len; j++) {
-                    uint16_t &c = k.b[(k.h - j) & (CAP - 1)];
+                int off = m * STRIDE, sup = 0;
+                for (int j = 0; j < k.len; j++) {                // write it back and count its support in one pass:
+                    uint16_t &c = k.b[(k.h - j) & (CAP - 1)];    // walls and apples did not move
                     c += off;
                     occ[c] = self;
+                    uint8_t u = occ[c + STRIDE];
+                    sup += u == APPLE || u == WALL;
                 }
+                k.sup = sup;
             }
             for (int i = 0; i < NS; i++)
-                if ((air >> i & 1) && d[i] == m) resup(i), air &= ~(1u << i);
+                if ((air >> i & 1) && d[i] == m) air &= ~(1u << i);
             if (!air) return;
         }
     }
@@ -368,6 +371,9 @@ PARAM(TIME_FIRST, 850);
 
 // ───────────────────────────── apple distances ─────────────────────────────
 static int appleCell[MAXA], nApple0;     // the apples of the first turn
+// The apples a leaf has to look at: those still on the board at the root of the search
+// (all of them outside a search). Most first-turn apples are gone by mid-game.
+static int scanList[MAXA], scanN = 0;
 static uint8_t baseOcc[CELLS];           // walls and VOID only
 
 // Gravity-aware distances.
@@ -490,6 +496,8 @@ static void initDistances(const State &S) {
     free(gd);
     gd = (uint8_t *)malloc((size_t)nApple0 * NL * LMAX * CELLS);
     memset(gd, 255, (size_t)nApple0 * NL * LMAX * CELLS);
+    scanN = nApple0;
+    for (int a = 0; a < nApple0; a++) scanList[a] = a;
     for (int a = 0; a < nApple0; a++) {
         // out of time on a slow machine: the remaining apples stay "out of reach"
         if (tblGuard && chrono::duration<double, milli>(chrono::steady_clock::now() - tblStart).count() > 700) break;
@@ -513,12 +521,12 @@ static void initGrid() {
 }
 struct Vor { int ap[2], cells[2]; };
 static void voronoi(const State &S, Vor &v) {
-    enum { R = 28 };
+    enum { R = 36 };                                 // 24 rows, one of padding above, room for a block of four below
     const int n = H, tailSkip = (int)VOR_TAIL;
     const bool cells = EV_VORC != 0;
     uint64_t fr[R], bufA[2][R], bufB[2][R], ap[R];
+    memset(fr, 0, sizeof fr);
     for (int y = 0; y < n; y++) fr[y + 1] = GRID[y + OY];
-    fr[0] = fr[n + 1] = 0;
     memset(bufA, 0, sizeof bufA), memset(bufB, 0, sizeof bufB), memset(ap, 0, sizeof ap);
     int lo = n, hi = 1;                              // rows the frontier can be in
     for (int i = 0; i < NS; i++) {
@@ -551,6 +559,33 @@ static void voronoi(const State &S, Vor &v) {
         uint64_t any = 0;
         if (lo > 1) lo--;
         if (hi < n) hi++;
+#if defined(__x86_64__)
+        // four rows per instruction; rows past the band or the grid have no free cells, so they stay empty
+#define LD(p) _mm256_loadu_si256((const __m256i *)(p))
+#define ST(p, v) _mm256_storeu_si256((__m256i *)(p), v)
+        __m256i anyv = _mm256_setzero_si256();
+        for (int y = lo; y <= hi; y += 4) {
+            __m256i a0 = LD(A + y), b0 = LD(B + y), f = LD(fr + y);
+            __m256i ea = _mm256_and_si256(_mm256_or_si256(_mm256_or_si256(_mm256_slli_epi64(a0, 1), _mm256_srli_epi64(a0, 1)),
+                                                          _mm256_or_si256(LD(A + y - 1), LD(A + y + 1))), f);
+            __m256i eb = _mm256_and_si256(_mm256_or_si256(_mm256_or_si256(_mm256_slli_epi64(b0, 1), _mm256_srli_epi64(b0, 1)),
+                                                          _mm256_or_si256(LD(B + y - 1), LD(B + y + 1))), f);
+            __m256i a = _mm256_andnot_si256(eb, ea), b = _mm256_andnot_si256(ea, eb);
+            ST(na + y, a), ST(nb + y, b);
+            ST(oa + y, _mm256_or_si256(LD(oa + y), a)), ST(ob + y, _mm256_or_si256(LD(ob + y), b));
+            ST(fr + y, _mm256_andnot_si256(_mm256_or_si256(ea, eb), f));
+            anyv = _mm256_or_si256(anyv, _mm256_or_si256(a, b));
+        }
+        any = !_mm256_testz_si256(anyv, anyv);
+        if (!any) break;
+        if (!cells) {
+            __m256i rem = _mm256_setzero_si256();
+            for (int y = 1; y <= n; y += 4) rem = _mm256_or_si256(rem, _mm256_and_si256(LD(ap + y), LD(fr + y)));
+            if (_mm256_testz_si256(rem, rem)) break;
+        }
+#undef LD
+#undef ST
+#else
         for (int y = lo; y <= hi; y++) {
             uint64_t ea = (A[y] << 1 | A[y] >> 1 | A[y - 1] | A[y + 1]) & fr[y];
             uint64_t eb = (B[y] << 1 | B[y] >> 1 | B[y - 1] | B[y + 1]) & fr[y];
@@ -566,6 +601,7 @@ static void voronoi(const State &S, Vor &v) {
             for (int y = 1; y <= n; y++) rem |= ap[y] & fr[y];
             if (!rem) break;
         }
+#endif
         cur ^= 1;
     }
     v.ap[0] = v.ap[1] = v.cells[0] = v.cells[1] = 0;
@@ -597,15 +633,21 @@ static float softT[129];             // tanh((margin - 64) / SOFT_T)
 static struct SoftInit {
     SoftInit() { for (int i = 0; i < 129; i++) softT[i] = tanhf((i - 64) / (float)SOFT_T); }
 } softInit;
+static float invT[257];              // 1 / (1 + d)
+static struct InvInit {
+    InvInit() { for (int i = 0; i < 257; i++) invT[i] = 1.0f / (1 + i); }
+} invInit;
 static void scanApples(const State &S, Scan &c) {
-    const uint8_t *row[MAXS], *rowU[MAXS];                   // each snake's distances to all apples
+    const uint8_t *row[MAXS], *rowU[MAXS];                   // each live snake's distances to all apples
+    int id[MAXS], own[MAXS], ns = 0;
     for (int i = 0; i < NS; i++) {
         c.d1[i] = c.d2[i] = c.du[i] = c.dt[i] = 255, c.own[i] = c.cnt[i] = 0;
         if (!S.s[i].alive) continue;
         int l, r;
         reachIdx(S, i, l, r);
-        row[i] = GDROW(l, r, S.s[i].head());
-        rowU[i] = GDROW(NL - 1, 0, S.s[i].head());
+        row[ns] = GDROW(l, r, S.s[i].head());
+        rowU[ns] = GDROW(NL - 1, 0, S.s[i].head());
+        id[ns] = i, own[ns] = OWNER[i], ns++;
     }
     c.owned[0] = c.owned[1] = c.contested = c.unreach = 0;
     c.prox[0] = c.prox[1] = 0;
@@ -613,24 +655,23 @@ static void scanApples(const State &S, Scan &c) {
     c.bank[0] = c.bank[1] = 0;
     const int bankM = (int)BANK_M;
     const int cap = (int)SOFT_CAP;
-    for (int a = 0; a < nApple0; a++) {
+    const bool ug = EV_UG != 0;
+    for (int q = 0; q < scanN; q++) {
+        const int a = scanList[q];
         if (S.occ[appleCell[a]] != APPLE) continue;
         int m[2] = {255, 255}, im[2] = {0, 0};
-        for (int i = 0; i < NS; i++) {
-            if (!S.s[i].alive) continue;
-            int v = row[i][a];
+        for (int k = 0; k < ns; k++) {
+            const int v = row[k][a], i = id[k], o = own[k];
             c.cnt[i] += v != 255;
             if (v < c.d1[i]) c.d2[i] = c.d1[i], c.d1[i] = v;
             else if (v < c.d2[i]) c.d2[i] = v;
-            int o = OWNER[i];
             if (v < m[o]) m[o] = v, im[o] = i;
         }
-        if (EV_UG != 0)
-            for (int i = 0; i < NS; i++)
-                if (S.s[i].alive) {
-                    int v = rowU[i][a];
-                    if (v < c.du[i]) c.du[i] = v;
-                }
+        if (ug)
+            for (int k = 0; k < ns; k++) {
+                int v = rowU[k][a];
+                if (v < c.du[id[k]]) c.du[id[k]] = v;
+            }
         if (m[0] != 255 || m[1] != 255) c.soft += softT[64 + (m[1] < cap ? m[1] : cap) - (m[0] < cap ? m[0] : cap)];
         if (m[0] < c.dt[im[0]]) c.dt[im[0]] = m[0];
         if (m[1] < c.dt[im[1]]) c.dt[im[1]] = m[1];
@@ -640,7 +681,7 @@ static void scanApples(const State &S, Scan &c) {
         else if (m[0] == m[1]) c.contested++;
         else {
             int o = m[0] < m[1] ? 0 : 1;
-            c.owned[o]++, c.own[im[o]]++, c.prox[o] += 1.0f / (1 + m[o]);
+            c.owned[o]++, c.own[im[o]]++, c.prox[o] += invT[m[o]];
         }
     }
 }
@@ -722,14 +763,24 @@ static float netForward(const float *f) {
         float x = f[k];
         if (x == 0) continue;
         const float *w = NW1T[k];
+#if defined(__x86_64__)
+        const __m256 xv = _mm256_set1_ps(x);                     // eight units per instruction
+        for (int j = 0; j < NH1; j += 8) _mm256_store_ps(h1 + j, _mm256_add_ps(_mm256_load_ps(h1 + j), _mm256_mul_ps(xv, _mm256_load_ps(w + j))));
+#else
         for (int j = 0; j < NH1; j++) h1[j] += x * w[j];
+#endif
     }
     memcpy(h2, NB2, sizeof h2);
     for (int k = 0; k < NH1; k++) {
         float x = h1[k];
         if (x <= 0) continue;
         const float *w = NW2T[k];
+#if defined(__x86_64__)
+        const __m256 xv = _mm256_set1_ps(x);
+        for (int j = 0; j < NH2; j += 8) _mm256_store_ps(h2 + j, _mm256_add_ps(_mm256_load_ps(h2 + j), _mm256_mul_ps(xv, _mm256_load_ps(w + j))));
+#else
         for (int j = 0; j < NH2; j++) h2[j] += x * w[j];
+#endif
     }
     for (int j = 0; j < NH2; j++) h2[j] = h2[j] > 0 ? h2[j] : 0;
     return NB3 + dot8(NW3, h2, NH2);
@@ -819,7 +870,7 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
 }
 
 // ───────────────────────────── search (Smitsimax) ─────────────────────────────
-struct Node {
+struct alignas(64) Node {   // exactly one cache line
     float w[4];      // sum of values per move (player 0's view)
     float n[4];      // visits per move (float: read straight into SSE)
     int32_t ch[4];   // child node per move, 0 = none
@@ -938,6 +989,9 @@ static long fixedIters = 0;      // LOCAL: iterations per move instead of time
 static void search(const State &root, double budgetMs, int8_t *out, const int8_t *played = nullptr) {
     auto t0 = chrono::steady_clock::now();
     const int MD = MERGE > 15 ? 15 : (int)MERGE;
+    scanN = 0;                                               // the leaves only look at the apples still here
+    for (int a = 0; a < nApple0; a++)
+        if (root.occ[appleCell[a]] == APPLE) scanList[scanN++] = a;
     int roots[MAXS];
     if (REUSE > 0 && played && haveTrees) {                  // keep what was searched under the moves played
         swap(pool, pool2);
@@ -1048,6 +1102,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                 if (!MD) {
                     if (!pool[nd].ch[m]) pool[nd].ch[m] = newNode();
                     cur[i] = pool[nd].ch[m];
+                    __builtin_prefetch(&pool[cur[i]]);       // needed next ply, after the turn is simulated
                 }
             }
             PROF_END(P_SELECT);
@@ -1105,9 +1160,9 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
 }
 
 static void initSearch() {
-    pool = (Node *)malloc(sizeof(Node) * POOL);
+    pool = (Node *)aligned_alloc(64, sizeof(Node) * POOL);
     mref = (MRef *)calloc((size_t)MAXS * 16 * CELLS * 4, sizeof(MRef));
-    pool2 = (Node *)malloc(sizeof(Node) * POOL);
+    pool2 = (Node *)aligned_alloc(64, sizeof(Node) * POOL);
     for (int i = 1; i < 65536; i++) sqrtLog[i] = sqrtf(logf((float)i));
 #if defined(__x86_64__)
     for (int m = 0; m < 16; m++)
