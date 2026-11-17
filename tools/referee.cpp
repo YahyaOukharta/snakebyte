@@ -406,8 +406,43 @@ static void genGames(int games, long iters, uint64_t seed, const char *out, doub
 // --export OUT IN...: replays recorded games and writes, for every position and both points
 // of view, NF float features + result (1 / 0.5 / 0) + final score difference / 16 + the
 // search score in (-1, 1) (0 when the file has none).
+// Experiment (SB_WIN=1): next to OUT, OUT.win holds for every record the 9x9 window of the
+// board around the head of each snake slot (same slots as the net inputs: the viewer's
+// snakes longest first, then the opponent's), one byte per cell:
+// 0 empty, 1 wall or outside, 2 apple, 3 this snake, 4 team-mate body, 5 team-mate head,
+// 6 enemy body, 7 enemy head. An empty slot is all zeros.
+enum { WR = 4, WN = (2 * WR + 1) * (2 * WR + 1) };
+static void windows(const State &S, int p, uint8_t *w) {
+    memset(w, 0, 8 * WN);
+    int per = NS / 2;
+    for (int side = 0; side < 2; side++) {
+        int o = side == 0 ? p : 1 - p, idx[4], n = 0;
+        for (int k = 0; k < per; k++)
+            if (S.s[o * per + k].alive) idx[n++] = o * per + k;
+        for (int a = 1; a < n; a++)
+            for (int b = a; b > 0 && S.s[idx[b]].len > S.s[idx[b - 1]].len; b--) swap(idx[b], idx[b - 1]);
+        for (int k = 0; k < n; k++) {
+            uint8_t *g = w + (side * 4 + k) * WN;
+            int i = idx[k], hd = S.s[i].head();
+            for (int dy = -WR; dy <= WR; dy++)
+                for (int dx = -WR; dx <= WR; dx++, g++) {
+                    int c = hd + dy * STRIDE + dx;
+                    if (c < 0 || c >= CELLS) { *g = 1; continue; }
+                    uint8_t v = S.occ[c];
+                    if (v == EMPTY) continue;
+                    if (v == WALL || v == VOID) { *g = 1; continue; }
+                    if (v == APPLE) { *g = 2; continue; }
+                    int j = v - SNAKE;
+                    bool head = S.s[j].head() == c;
+                    *g = j == i ? 3 : OWNER[j] == OWNER[i] ? (head ? 5 : 4) : (head ? 7 : 6);
+                }
+        }
+    }
+}
+
 static void exportGames(const char *out, int nin, char **in) {
     FILE *fo = fopen(out, "wb");
+    FILE *fw = getenv("SB_WIN") ? fopen((string(out) + ".win").c_str(), "wb") : nullptr;
     long pos = 0, games = 0;
     uint64_t keep = getenv("SB_KEEP") ? atol(getenv("SB_KEEP")) : 1;
     for (int k = 0; k < nin; k++) {
@@ -439,6 +474,11 @@ static void exportGames(const char *out, int nin, char **in) {
                     f[NF + 1] = (S.len[p] - S.len[1 - p]) / 16.0f;
                     f[NF + 2] = (p ? -sc[i] : sc[i]) / 10000.0f;
                     fwrite(f, sizeof f, 1, fo), pos++;
+                    if (fw) {
+                        uint8_t w[8 * WN];
+                        windows(hist[i], p, w);
+                        fwrite(w, sizeof w, 1, fw);
+                    }
                 }
             }
             games++;
@@ -446,6 +486,7 @@ static void exportGames(const char *out, int nin, char **in) {
         fclose(fp);
     }
     fclose(fo);
+    if (fw) fclose(fw);
     fprintf(stderr, "%ld games, %ld records of %d floats\n", games, pos, NF + 3);
 }
 
