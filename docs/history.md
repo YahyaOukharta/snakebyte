@@ -104,6 +104,8 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
+| The same in **real time against v1.4b** (found when the whole source was gated): with the rule, three batches; without it | 100 each | **−53, −56, −67**; −10, +28 |
+| Source without the rule (speed pass, flood cap 14) vs v1.4b, real time | 300 | +28, +42, +24 (pooled about +30 ± 37) |
 
 ## What was learned
 
@@ -343,6 +345,15 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 - GCC 13 refuses `#pragma GCC target` in front of the standard headers in a -DLOCAL build
   ("target specific option mismatch" in std::string); the bench passes the same sets as
   flags with -DNO_PRAGMA.
+
+- **The decided-game rule cost 55 Elo and the first test did not see it.** At 3,000 fixed
+  iterations in self-play it was +17 and −21; in real time against the live version
+  −53, −56, −67. A lead larger than the apples left is not decided (snakes still lose
+  parts and die), and adding the bonus of 8.7 early moves every value into the flat part
+  of the squash, where the search cannot tell moves apart. It is off; the stalling when
+  behind near the end is back and waits for a fix that does not touch the scale of the
+  values. Rule for the gates: a change that goes into the default build is gated in real
+  time against the live version, each change on its own, before the next one is added.
 
 ## Arena notes
 

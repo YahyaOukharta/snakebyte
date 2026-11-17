@@ -342,7 +342,7 @@ PARAM(MERGE, 0);          // state merging: a snake's node is (depth mod MERGE, 
 PARAM(EV_TEAM, 0);        // 1: a snake's distance cost uses the nearest apple it is its side's closest snake to (if any), so team-mates split up
 PARAM(EV_PASS, 0);        // own credit: cost per pass in the line (the head ends where it was: up and fall back)
 PARAM(EV_TEMPO, 0);       // own credit: cost per cell of the snake's mean table distance to its nearest apple over the line (get there sooner)
-PARAM(DECIDED, 1);        // 1: a lead larger than the apples left gets the win bonus before the end, so the loser gains nothing by not finishing
+PARAM(DECIDED, 0);        // 1: a lead larger than the apples left gets the win bonus before the end, so the loser gains nothing by not finishing
 PARAM(WIN_SMOOTH, 0);     // share of the win bonus given before the end, as tanh(lead / WIN_T) x (apples eaten / apples at the start)^2: no cliff at the last apple
 PARAM(WIN_T, 2);
 PARAM(TBL_DROP, 0);      // reach tables: 1 = a snake that steps off at full stretch falls until its head is on a supported cell, 0 = it drops one row
