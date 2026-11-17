@@ -95,6 +95,8 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Graded short-snake bonus (0.4 per part for parts 4–6) **against sZoom**, dump build, replay stats; baseline v1.4b the same way | 20 / 18 gauntlet games | +3 −13 =4, margin −3.95 (baseline +5 −11 =2, margin +0.11). Our share of snake-turns at length 3–4 fell from 41% to 31% as intended (his: 21–27%) and it did not help: the even lengths are a result of his play, not the cause |
 | Tempo credit (`EV_TEMPO`): cost per cell of a snake's mean table distance over the line, 0.03 / 0.08 / 0.2 | 100 each, 3000 it | −24 / −3 / +3 |
 | Pass cost (`EV_PASS`): cost per move in the line that leaves the head where it was, 0.05 / 0.15 / 0.4 | 100 each, 3000 it | −14 / +3 / −7 |
+| Tempo credit 0.2 **against sZoom**, dump build, replay stats (`tools/gauntlet_stats.py`) | 20 gauntlet games | +3 −14 =3, margin −2.9. At 7–10 moves our snakes now get closer on 61% of the turns (46% before; his 60–62%) and pass 1.3 times a game (5.0 before; his 0.9–1.4), and we still eat 1.2 apples fewer than he does in turns 10–50: the wasted turns were a symptom |
+| Assignment-aware distance (`EV_TEAM`): a snake's cost uses the nearest apple it is its side's closest snake to | 200, 3000 it | +45, −45 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -290,6 +292,15 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   against his 16. Some are real waits next to an enemy head; many are a snake stretched
   to its full length, where every real move makes it fall and the table distance does
   not improve, so the pass ties with everything else.
+
+- **Our snakes travel in packs.** In the baseline games against sZoom a snake of ours
+  has the same nearest apple as a team-mate on 43% of its turns (apples within 12 moves,
+  turns 10–50); his on 26%. Making each snake aim at an apple it is its side's closest
+  to is zero in self-play (+45, −45).
+- **Twenty gauntlet games cannot separate candidates.** v1.3, v1.4, v1.4b and three
+  variants all score 15–30% against sZoom with margins between +0.1 and −4; the spread
+  between runs of the same build is as large. The replay statistics show what a change
+  does to the behaviour, not whether it wins.
 
 ## Arena notes
 

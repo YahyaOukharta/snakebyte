@@ -335,6 +335,7 @@ PARAM(EV_ALIVE, 1.39);      // per live snake more than the opponent
 PARAM(EV_UG, 0.0065);         // a snake with no apple in reach: cost per cell to the nearest apple a longer snake could reach
 PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, so the squash stays in its steep part
 PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
+PARAM(EV_TEAM, 0);        // 1: a snake's distance cost uses the nearest apple it is its side's closest snake to (if any), so team-mates split up
 PARAM(EV_PASS, 0);        // own credit: cost per pass in the line (the head ends where it was: up and fall back)
 PARAM(EV_TEMPO, 0);       // own credit: cost per cell of the snake's mean table distance to its nearest apple over the line (get there sooner)
 PARAM(DECIDED, 1);        // 1: a lead larger than the apples left gets the win bonus before the end, so the loser gains nothing by not finishing
@@ -568,6 +569,7 @@ struct Scan {
     int du[MAXS];                // distance to the nearest apple for the longest snake of the tables, run 0
     int own[MAXS];               // apples this snake is the nearest of all to
     int cnt[MAXS];               // apples this snake can reach
+    int dt[MAXS];                // distance to the nearest apple it is its side's closest snake to (255: none)
     int owned[2], contested, unreach;
     float prox[2];               // sum over owned apples of 1 / (1 + distance)
     int bank[2];                 // apples reached at least BANK_M moves before the opponent
@@ -580,7 +582,7 @@ static struct SoftInit {
 static void scanApples(const State &S, Scan &c) {
     const uint8_t *row[MAXS], *rowU[MAXS];                   // each snake's distances to all apples
     for (int i = 0; i < NS; i++) {
-        c.d1[i] = c.d2[i] = c.du[i] = 255, c.own[i] = c.cnt[i] = 0;
+        c.d1[i] = c.d2[i] = c.du[i] = c.dt[i] = 255, c.own[i] = c.cnt[i] = 0;
         if (!S.s[i].alive) continue;
         int l, r;
         reachIdx(S, i, l, r);
@@ -612,6 +614,8 @@ static void scanApples(const State &S, Scan &c) {
                     if (v < c.du[i]) c.du[i] = v;
                 }
         if (m[0] != 255 || m[1] != 255) c.soft += softT[64 + (m[1] < cap ? m[1] : cap) - (m[0] < cap ? m[0] : cap)];
+        if (m[0] < c.dt[im[0]]) c.dt[im[0]] = m[0];
+        if (m[1] < c.dt[im[1]]) c.dt[im[1]] = m[1];
         if (m[0] + bankM <= m[1]) c.bank[0]++;
         else if (m[1] + bankM <= m[0]) c.bank[1]++;
         if (m[0] == 255 && m[1] == 255) c.unreach++;
@@ -773,8 +777,9 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
     }
     for (int i = 0; i < NS; i++) {
         if (!S.s[i].alive) continue;
-        int far = c.d1[i] - (int)EV_N1;
-        double dc = c.d1[i] <= EV_N1 ? EV_S1 * c.d1[i] : EV_S1 * EV_N1 + EV_S2 * (far < EV_N2 ? far : EV_N2);
+        const int dd = EV_TEAM != 0 && c.dt[i] != 255 ? c.dt[i] : c.d1[i];
+        int far = dd - (int)EV_N1;
+        double dc = dd <= EV_N1 ? EV_S1 * dd : EV_S1 * EV_N1 + EV_S2 * (far < EV_N2 ? far : EV_N2);
         if (c.d1[i] == 255 && EV_UG != 0) dc = EV_S1 * EV_N1 + EV_S2 * EV_N2 - EV_UG * (40 - (c.du[i] < 40 ? c.du[i] : 40));
         if (c.d1[i] == 255) dc += EV_STUCK;
         if (EV_SHORT != 0) {                                     // a bonus, so that dying does not get cheaper
