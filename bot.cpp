@@ -313,27 +313,32 @@ static double prm(const char *name, double def) {
 #else
 #define PARAM(name, def) static const double name = def
 #endif
-PARAM(UCB_C, 0.7);       // exploration constant
-PARAM(EV_K, 6.0);        // value = tanh(raw / EV_K)
-PARAM(EV_WIN, 4.0);      // bonus for a decided game
-PARAM(EV_LOSS, 0.05);    // losses difference (the tie-break)
-PARAM(EV_OWN, 0.25);     // apple closer to me than to the opponent
-PARAM(EV_ELEV, 0.01);    // height of the head
-PARAM(EV_S1, 0.08);      // nearest reachable apple: cost per cell for the first EV_N1 cells ...
-PARAM(EV_N1, 8); 
+PARAM(UCB_C, 0.735);       // exploration constant
+PARAM(EV_K, 8.55);        // value = tanh(raw / EV_K)
+PARAM(EV_WIN, 8.69);      // bonus for a decided game
+PARAM(EV_LOSS, 0.057);    // losses difference (the tie-break)
+PARAM(EV_OWN, 0.19);     // apple closer to me than to the opponent
+PARAM(EV_ELEV, 0.04);    // height of the head
+PARAM(EV_S1, 0.0697);      // nearest reachable apple: cost per cell for the first EV_N1 cells ...
+PARAM(EV_N1, 11); 
 PARAM(EV_S2, 0.015);     // ... and per cell for the next EV_N2. The total stays below one apple,
-PARAM(EV_N2, 20);        // so eating the last apple in reach never lowers the evaluation
-PARAM(EV_SELF, 1.0);     // per-snake credit: weight of the snake's own growth and apple distance in its own tree
+PARAM(EV_N2, 16);        // so eating the last apple in reach never lowers the evaluation
+PARAM(EV_SELF, 0.642);     // per-snake credit: weight of the snake's own growth and apple distance in its own tree
 PARAM(POL, 0);           // 1: an unvisited move is tried in order of distance to the nearest apple, 0: at random
 PARAM(POL_EPS, 8);       // one first visit in POL_EPS ignores that order
 PARAM(REUSE, 0);         // tree reuse: share of last turn's statistics kept under the moves played (0 = off)
 PARAM(EV_GLOB, 1.0);     // weight of the shared value in a snake's own tree
 PARAM(EV_OWNS, 0);       // credit to the snake that is nearest to an apple its side owns
-PARAM(NET_A, 2.0);       // with a net: raw = NET_MIX * handcrafted + NET_A * logit of the net
+PARAM(NET_A, 2.18);       // with a net: raw = NET_MIX * handcrafted + NET_A * logit of the net
 PARAM(NET_MIX, 1.0);
-PARAM(EV_ALIVE, 0);      // per live snake more than the opponent
-PARAM(EV_UG, 0);         // a snake with no apple in reach: cost per cell to the nearest apple a longer snake could reach
+PARAM(EV_ALIVE, 1.39);      // per live snake more than the opponent
+PARAM(EV_UG, 0.0065);         // a snake with no apple in reach: cost per cell to the nearest apple a longer snake could reach
 PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, so the squash stays in its steep part
+PARAM(EV_STUCK, 0);      // extra cost for a snake with no apple in reach: it will not grow again
+PARAM(EV_VOR, 0.25);        // per apple more in my Voronoi territory than in the opponent's (flood from the heads, bodies block)
+PARAM(EV_VORC, 0);       // per cell of territory more
+PARAM(VOR_STEPS, 32);    // the flood stops after this many steps
+PARAM(VOR_TAIL, 1);      // parts at the tail end that do not block (they will have moved)
 PARAM(EV_MEAN, 0.5);     // share of the mean length difference along the line (eat sooner)
 PARAM(D_BASE, 3);        // depth = D_BASE + iterations / D_STEP1 until D_SW iterations ...
 PARAM(D_STEP1, 250);
@@ -372,7 +377,11 @@ static inline uint8_t *GDROW(int l, int r, int c) { return gd + (((size_t)l * LM
 
 static void bfsSupport(const uint8_t *occ0) {
     for (int c = 0; c < CELLS; c++)
+#ifndef SUP_APPLES                                           // only walls hold: an apple is gone once it is eaten, the table is not
+        supc[c] = c + STRIDE < CELLS && baseOcc[c] < WALL && baseOcc[c + STRIDE] == WALL;
+#else
         supc[c] = c + STRIDE < CELLS && baseOcc[c] < WALL && (baseOcc[c + STRIDE] == WALL || occ0[c + STRIDE] == APPLE);
+#endif
 }
 
 static void bfsGravity(int a) {
@@ -435,6 +444,7 @@ static inline void reachIdx(const State &S, int i, int &l, int &r) {
     r = j;
 }
 
+static void initGrid();
 // All distance tables for a new game, from its first position.
 static void initDistances(const State &S) {
     nApple0 = 0;
@@ -445,6 +455,67 @@ static void initDistances(const State &S) {
     gd = (uint8_t *)malloc((size_t)nApple0 * NL * LMAX * CELLS);
     memset(gd, 255, (size_t)nApple0 * NL * LMAX * CELLS);
     for (int a = 0; a < nApple0; a++) bfsGravity(a);
+    initGrid();
+}
+
+// ───────────────────────────── Voronoi territory ─────────────────────────────
+// Flood from all heads at once over the free cells of the grid, one step per turn, bodies
+// and walls blocking; gravity is ignored. A cell belongs to the player who gets there
+// first; a cell both reach in the same step belongs to nobody and stops both. Unlike the
+// reach tables this sees the position of the bodies: an apple behind the opponent's body
+// is not mine however near it is. The board is one 64-bit word per row.
+static uint64_t GRID[ROWS];              // free cells of the real grid
+static void initGrid() {
+    memset(GRID, 0, sizeof GRID);
+    for (int y = 0; y < H; y++)
+        for (int x = 0; x < W; x++)
+            if (baseOcc[cellOf(x, y)] < WALL) GRID[y + OY] |= 1ull << (x + OX);
+}
+struct Vor { int ap[2], cells[2]; };
+static void voronoi(const State &S, Vor &v) {
+    enum { R = 28 };
+    const int n = H, tailSkip = (int)VOR_TAIL;
+    uint64_t fr[R], bufA[2][R], bufB[2][R], oa[R], ob[R];
+    for (int y = 0; y < n; y++) fr[y + 1] = GRID[y + OY];
+    fr[0] = fr[n + 1] = 0;
+    memset(bufA, 0, sizeof bufA), memset(bufB, 0, sizeof bufB);
+    for (int i = 0; i < NS; i++) {
+        const Snake &k = S.s[i];
+        if (!k.alive) continue;
+        for (int j = 0; j < k.len - tailSkip; j++) {
+            int c = k.part(j), r = (c >> 6) - OY;
+            if ((unsigned)r < (unsigned)n) fr[r + 1] &= ~(1ull << (c & 63));
+        }
+        int c = k.head(), r = (c >> 6) - OY;
+        if ((unsigned)r < (unsigned)n) (OWNER[i] ? bufB[0] : bufA[0])[r + 1] |= 1ull << (c & 63);
+    }
+    memset(oa, 0, sizeof oa), memset(ob, 0, sizeof ob);
+    int cur = 0;
+    for (int step = 0, lim = (int)VOR_STEPS; step < lim; step++) {
+        const uint64_t *A = bufA[cur], *B = bufB[cur];
+        uint64_t *na = bufA[cur ^ 1], *nb = bufB[cur ^ 1];
+        uint64_t any = 0;
+        for (int y = 1; y <= n; y++) {
+            uint64_t ea = (A[y] << 1 | A[y] >> 1 | A[y - 1] | A[y + 1]) & fr[y];
+            uint64_t eb = (B[y] << 1 | B[y] >> 1 | B[y - 1] | B[y + 1]) & fr[y];
+            uint64_t a = ea & ~eb, b = eb & ~ea;
+            na[y] = a, nb[y] = b;
+            oa[y] |= a, ob[y] |= b;
+            fr[y] &= ~(ea | eb);
+            any |= a | b;
+        }
+        if (!any) break;
+        cur ^= 1;
+    }
+    v.ap[0] = v.ap[1] = v.cells[0] = v.cells[1] = 0;
+    for (int a = 0; a < nApple0; a++) {
+        int c = appleCell[a];
+        if (S.occ[c] != APPLE) continue;
+        int r = (c >> 6) - OY + 1;
+        v.ap[0] += oa[r] >> (c & 63) & 1, v.ap[1] += ob[r] >> (c & 63) & 1;
+    }
+    if (EV_VORC != 0)
+        for (int y = 1; y <= n; y++) v.cells[0] += __builtin_popcountll(oa[y]), v.cells[1] += __builtin_popcountll(ob[y]);
 }
 
 // ───────────────────────────── value net ─────────────────────────────
@@ -631,11 +702,17 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
     Scan c;
     scanApples(S, c);
     raw += EV_OWN * (c.owned[0] - c.owned[1]) + EV_ALIVE * (S.alive[0] - S.alive[1]);              // an apple nobody can reach, or a tie, counts for nobody
+    if (EV_VOR != 0 || EV_VORC != 0) {
+        Vor v;
+        voronoi(S, v);
+        raw += EV_VOR * (v.ap[0] - v.ap[1]) + EV_VORC * (v.cells[0] - v.cells[1]);
+    }
     for (int i = 0; i < NS; i++) {
         if (!S.s[i].alive) continue;
         int far = c.d1[i] - (int)EV_N1;
         double dc = c.d1[i] <= EV_N1 ? EV_S1 * c.d1[i] : EV_S1 * EV_N1 + EV_S2 * (far < EV_N2 ? far : EV_N2);
         if (c.d1[i] == 255 && EV_UG != 0) dc = EV_S1 * EV_N1 + EV_S2 * EV_N2 - EV_UG * (40 - (c.du[i] < 40 ? c.du[i] : 40));
+        if (c.d1[i] == 255) dc += EV_STUCK;
         double v = -dc + EV_ELEV * (H - cy(S.s[i].head()));
         raw += OWNER[i] == 0 ? v : -v;
         own[i] = S.s[i].len - root.s[i].len - dc + EV_OWNS * c.own[i];

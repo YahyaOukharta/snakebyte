@@ -73,8 +73,26 @@ snake's current stretch charged to every run" (far too pessimistic: −73 to −
 "head within length − 1 of any supported cell" (static; right on average, wrong where the
 body cannot lie on that cell, which left snakes hopping under apples all game).
 
-Supports are the walls and the first-turn apples. Other snakes as support are ignored,
-so climbing on a team-mate is not seen.
+Supports are the walls only. Until v1.2 the first-turn apples counted too, but the table
+is built once and an apple is gone when it is eaten: the table then walked over a support
+that no longer existed and sent snakes after apples they could not reach (see the sZoom
+game in history.md). `-DSUP_APPLES` builds the old tables. Other snakes as support are
+ignored, so climbing on a team-mate is not seen.
+
+### Voronoi apple territory (`voronoi`)
+
+The reach tables know the walls and gravity but not where the bodies are. The second
+view is the opposite: a flood from all heads at once over the free cells of the grid, one
+step per turn, walls and bodies blocking (the last `VOR_TAIL` parts of a body do not),
+gravity ignored. A cell belongs to the player whose flood gets there first; a cell both
+reach in the same step belongs to nobody and stops both. The evaluation adds `EV_VOR`
+(0.25) per apple more in my territory than in the opponent's.
+
+The board is one 64-bit word per row (bit = column), so a flood step is four shifts/ORs
+and a mask per row for each player, at most 24 rows; the flood stops when nothing new is
+reached or after `VOR_STEPS` (32). It costs 6% of the time of a simulated turn. Weight 0.6
+is −111 Elo: the flood has no gravity, so it must stay a correction next to the tables,
+not the main distance.
 
 ### Per-snake credit
 

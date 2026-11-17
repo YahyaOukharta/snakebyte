@@ -11,6 +11,7 @@ maps, both seats). Self-play overstates arena gains.
 | v1.0 | from scratch: exact engine (0 desyncs), Smitsimax, handcrafted evaluation, 42 ms | vs legacy, real time: +14 −7 in the games legacy finished; legacy crashed in 59 of 80 | 19.0 at 54% (replaced) | ~254 |
 | v1.1 | per-snake credit in the backup; gravity-aware apple distances with a capped two-slope cost; UCB constant 0.35 → 0.7; support counters + direct falls + branch-free selection (37k → 46k–73k simulated turns per turn) | vs v1.0: +88 −8 =4 real time (+382 ± 119), +88 −10 =2 at 1000 iterations | **30.49** (26.6 at 18%, 27.5 at 33%, 29.3 at 53%); 161 battles: +91 −60 =10 | **11** |
 | v1.2 | path-based reach model (cell + unsupported run); an apple one cell beyond the head's reach counts as reachable; model 64 rows high (20 above the grid); 44 ms from the first input line | vs v1.1: real time +38 −35 =27 (+10 ± 59); 3000 iterations +67, −14 (200 games, +26 ± 44); vs the static model at 1000 iterations +51 ± 45 (200 games) | **32.14**; 159 battles: +87 −49 =23 | **3** |
+| v1.3 | reach tables hold on walls only (an eaten apple was support for ever); Voronoi apple territory at the leaves (flood from the heads on bit rows, bodies block), weight 0.25; value net n0b added to the handcrafted value (72 → 96 → 32 → 1, column-form forward pass); 15 parameters from SPSA; reach table with the apple index innermost | vs v1.2: real time +60 −21 =19 (**+143 ± 66**) | running | |
 
 ## Measurements
 
@@ -64,6 +65,12 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | The same with the budgets of CodinGame: 7000 iterations vs 7800 for v1.2 | 100 | +17 ± 58. Pooled with the three real-time batches: +24 ± 31 over 400 games |
 | Reach tables for lengths up to 20 instead of 12 (tables 100 → 305 ms) | 100, 3000 it | −7 ± 63 |
 | **Bit-row engine** (`tools/experiments/bitboard_engine.cpp`): apples, the union of snakes and every snake as one 64-bit word per row, the body stored minus an offset so a fall is one addition. 40 games identical to the byte board. Laptop: 708 vs 700 ns per simulated turn. CodinGame, same game replayed twice each: 398k / 762k simulated turns in the first 850 ms against 665k / 1013k | — | slower on x86: not kept |
+| Stuck-snake case from a lost game against sZoom (below): reach tables on **walls only** (`SUP_APPLES` off) vs walls + first-turn apples | 100, 3000 it | −7 ± 65 alone |
+| Extra cost for a snake with no apple in reach (`EV_STUCK`) 2 / 5 with walls-only tables; 2 with the old tables | 100 each, 3000 it | +24 / **−115**; +3 |
+| **Voronoi apple territory** (`EV_VOR`): apples the flood from my heads reaches first minus the opponent's. Weight 0.12 / 0.25 / 0.6 vs 0; 0.25 replacing the static ownership term; territory cells 0.01 (`EV_VORC`) | 100 each, 3000 it | +21 / **+56** / −111; −28; 0. Cost: +6% per simulated turn |
+| Walls-only tables **and** Voronoi 0.25 vs the tuned n0b hybrid; the same with `EV_STUCK` 2 | 100 each, 3000 it | **+111 ± 66**; +92 |
+| That build (v1.3) vs v1.2, **real time** | 100 | **+143 ± 66** (+60 −21 =19) |
+| Gauntlet (CodinGame test games, first seat) of the tuned n0b hybrid before these two changes: vs _H3R0_ / vs sZoom | 16 / 15 | +4 −11 =1 / **+0 −15** |
 
 ## What was learned
 
@@ -157,6 +164,33 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 - **Gains of the evaluation shrink with depth**: the tuned hybrid is +111 at 3000
   iterations and about +20 at 7000. The same was seen for the start depth.
 - zsh does not split `$VAR` into words: build option lists with `eval` or arrays.
+
+- **Against the top two the margin goes steadily, then all at once.** Over 189 arena
+  logs: level at three quarters of the apples left, −1.2 at half, −2.7 at a quarter,
+  −4.9 at the end (against everybody else: +0.3, +0.1, +0.2, +1.0), and we lose one body
+  part more per game than they do. In the gauntlet games the last quarter of the apples
+  often goes 8 to 1.
+- **One lost game against sZoom, replayed with board dumps, showed three faults:**
+  1. *Phantom support.* The reach tables counted the apples of the first turn as support
+     for the whole game. Once such an apple is eaten the table still walks over it: a
+     length-3 snake in a pit was told for 80 turns that an apple was 9 moves away.
+  2. *A body part can be worth a snake.* Both sides had a length-4 snake in a pit that a
+     length-3 snake cannot leave. Ours stepped twice into a cell the opponent's head also
+     wanted, lost a part, and sat in the pit for the remaining 190 turns; the mirrored
+     snake of sZoom left its pit and ate nine apples. Two of our four snakes ended at
+     length 3.
+  3. *Bodies are not in the tables.* A length-9 snake circled for 24 turns ten moves
+     from an apple behind an opponent's body.
+  Walls-only tables fix the first; the Voronoi flood sees the third. Neither does much
+  alone in self-play (−7, +56) but together +111: the flood needs truthful distances
+  beside it. A flat cost for "nothing in reach" does not fix the second (−115 at 5): a
+  snake in the air or between apples is often without reach for a turn.
+- **Self-play between two builds that share a blind spot cannot see it.** Both sides had
+  phantom paths, so the fix alone measured nothing; the games against real players
+  (gauntlet, arena logs) showed it. A dump build replayed on a lost game
+  (`cg.py test out/dump.cpp --replay GAME`) is the fastest way to such a fault.
+- A column cut off by `cut -c1-60` reads "dist 1" for "dist 13": print the whole line
+  before believing a bug.
 
 ## Arena notes
 
