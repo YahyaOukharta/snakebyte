@@ -20,6 +20,24 @@ measurement, negative results recorded.
 | `tools/arena.py fetch / stats` | Our arena battles per opponent |
 | `SB_BENCH=3000 ./build/bot < tools/bench/pos11.txt` | Speed: simulated turns per second over 100 turns of self-play |
 
+## Value net pipeline
+
+```sh
+./build/referee --gen 3000 600 100000 data/g0_0.bin 0.05      # self-play records: games, iterations, seed, file, random-move rate
+python3 tools/kaggle_gen.py push g1 4 2500 5000000 2000 - 0.05  # the same on Kaggle: tag, kernels, games per process, seed, iterations, net
+python3 tools/kaggle_gen.py fetch g1                            # -> data/g1_<kernel>_<process>.bin
+for f in data/g1*.bin; do SB_KEEP=3 ./build/referee --export ${f%.bin}.f32 $f & done   # features + labels, one position in 3
+python3 tools/train.py -o tools/nets/n1a.bin 'data/g1*.f32' --epochs 20 --lam 0.6
+./build/referee --evalcheck tools/nets/n1a.bin data/g1_1_0.f32 1000 | diff - tools/nets/n1a.bin.check   # engine = PyTorch
+./build/referee build/bot@SB_NET=tools/nets/n1a.bin build/bot@SB_NET=tools/nets/n0b.bin -g 50 -n 1000  # gate
+python3 tools/pack.py -n tools/nets/n1a.bin -o out/sub.cpp      # submission with the net embedded (3 characters per weight)
+```
+
+A record file holds seed + moves + search scores, not positions: the game is rebuilt by the
+referee's map generator and the engine, so the features can change without a new
+generation. `tools/spsa.py` tunes all the `PARAM`s at once by self-play (log in
+`league/spsa.jsonl`).
+
 ## The gates, in order
 
 1. **Exactness** (after any change to `State`). Fixed-iteration games of the new build and

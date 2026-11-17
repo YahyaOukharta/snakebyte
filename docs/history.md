@@ -10,7 +10,7 @@ maps, both seats). Self-play overstates arena gains.
 | legacy | March 2026 submission: per-snake MCTS, depth 6, 32 ms | | 17.91 | 328 / 394 |
 | v1.0 | from scratch: exact engine (0 desyncs), Smitsimax, handcrafted evaluation, 42 ms | vs legacy, real time: +14 −7 in the games legacy finished; legacy crashed in 59 of 80 | 19.0 at 54% (replaced) | ~254 |
 | v1.1 | per-snake credit in the backup; gravity-aware apple distances with a capped two-slope cost; UCB constant 0.35 → 0.7; support counters + direct falls + branch-free selection (37k → 46k–73k simulated turns per turn) | vs v1.0: +88 −8 =4 real time (+382 ± 119), +88 −10 =2 at 1000 iterations | **30.49** (26.6 at 18%, 27.5 at 33%, 29.3 at 53%); 161 battles: +91 −60 =10 | **11** |
-| v1.2 | path-based reach model (cell + unsupported run); an apple one cell beyond the head's reach counts as reachable; model 64 rows high (20 above the grid); 44 ms from the first input line | vs v1.1: real time +38 −35 =27 (+10 ± 59); 3000 iterations +67, −14 (200 games, +26 ± 44); vs the static model at 1000 iterations +51 ± 45 (200 games) | submission 41730845 | |
+| v1.2 | path-based reach model (cell + unsupported run); an apple one cell beyond the head's reach counts as reachable; model 64 rows high (20 above the grid); 44 ms from the first input line | vs v1.1: real time +38 −35 =27 (+10 ± 59); 3000 iterations +67, −14 (200 games, +26 ± 44); vs the static model at 1000 iterations +51 ± 45 (200 games) | **32.14**; 159 battles: +87 −49 =23 | **3** |
 
 ## Measurements
 
@@ -49,6 +49,13 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Model 64 rows instead of 48 vs v1.1 | 100, 1000 it | +56 ± 64 (no regression; it removes desyncs when a snake climbs above the grid) |
 | First value net n0a (72 features → 96 → 32 → 1, 2.7M records of 24k games at 600 iterations; held-out accuracy 78.5%) replacing the shared value, scale 1 / 2 / 4 / 8 | 100 each, 1000 it | −74 / −31 / +28 / −108 |
 | n0a added to the handcrafted value, weight 1 / 2 / 4; half handcrafted + 3 | 100 each | +21 / +42 / −35; +35 (all ± 65) |
+
+| Net n0b: the same net retrained on the path-based reach features. Replacing the shared value (scale 4) / added to it (weight 2) | 100 / 200, 1000 it | +42 / **+81, +89** (pooled +85 ± 45) |
+| The n0b hybrid packed into the source, **real time on Kaggle** vs v1.2 | 200 | +28, +14 (pooled +21 ± 43): the net costs iterations |
+| Nets on generation 1 (5.0M records of 70k games at 2000 iterations; held-out accuracy 80.4%): n1a (60% result + 40% search score), n1b (result only), vs n0b | 100 each | +14 / +17 |
+| n1a with other mixes: pure net ×4; half handcrafted + 4; handcrafted + 3; handcrafted + 6, vs n0b's handcrafted + 2 | 100 each | −60 / −28 / −49 / −45 |
+| Gradient for a snake with nothing in reach (`EV_UG` 0.004); live-snake term (`EV_ALIVE` 1) | 100 each | +21 / 0 |
+| Values measured from the root's evaluation (`CENTER`): without net; with net; with `EV_K` 3 / 10; `EV_K` 4 + UCB 1.0; net weight 1 | 100 each | +14; −42; −3 / −31; −35; −38 |
 
 ## What was learned
 
@@ -98,6 +105,26 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 - **A value net on the same information as the handcrafted evaluation adds little.** The
   first net equals it at best. In the earlier projects the first net saw the raw board;
   here its inputs are the handcrafted terms.
+
+- **Where the points are (v1.2, 159 battles):** against ranks 3–12 we are level
+  (+43 −24 =14 without the top two); against _H3R0_ and sZoom 1 win in 18. Replays show
+  parity through the opening and middle game, then the opponent keeps eating while we
+  stop. In the games looked at, the apples left were ones only a long snake reaches, or
+  sat in dead-end pits where a snake of length 4 loses its head getting out (the search
+  is right to refuse those).
+- **The net saturates at these inputs.** Three times the data from a deeper teacher and a
+  result / search-score blend: +15, inside the noise. Its inputs are the same quantities
+  the handcrafted evaluation uses, as in sZoom's net, so the gain can only come from how
+  they are combined. Every other mix of net and handcrafted value is worse than
+  "handcrafted + 2 × logit".
+- **Merging the net-input scan with the evaluation's scan** (one pass over apples ×
+  snakes instead of two) brought the net build back from 5.1k to 6.2k iterations per
+  turn on CodinGame.
+- **Export is slow because of the reach tables**: 0.1–0.3 s per game, 45 minutes for 70k
+  games on 8 cores. Records hold seed + moves, so a feature change costs one export, not
+  a new generation.
+- A wait loop written as `while pgrep -f "referee --gen"` matches itself and never ends:
+  use `pgrep -x referee`.
 
 ## Arena notes
 
