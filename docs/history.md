@@ -90,6 +90,11 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | n2a + the new shape (v1.4) vs v1.3 | 100 real time; 100 at 3000 it | **+119 ± 62; +96 ± 66** |
 | Reach tables limited to the grid, 3 columns beside and 14 rows above (table time 70 → 44 ms, 56 → 37 ms) vs the whole model | 100, 3000 it | +24 ± 64: no loss |
 | Gauntlet of v1.4, first seat: vs sZoom / vs _H3R0_ | 15 each | +2 −10 =1 (2 timeouts) / +1 −11 =1 (2 timeouts) |
+| Kaggle, 400 games each at 3000 iterations, on v1.4: value scale 6.5; own-credit weight 1.0; eat-sooner share 0.25; elevation 0.01; ownership 0.3; second depth step 700 | 400 each | −8; +13; −1; −6; −17; −1 (all ± 31): a plateau |
+| Bonus for a live snake above length 3 (`EV_SHORT`), as a cost on short snakes 1 / 2.5; as a bonus 1 / 2.5; for length above 4; graded over parts 4–6 at 0.4 / 0.8 | 100 each, 3000 it | −31 / −63; −10 / +14; −10; +38 / +10: nothing in self-play |
+| Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
+| Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
+| **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
 
 ## What was learned
 
@@ -248,6 +253,31 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   (13 of 1,178 past 46 ms; in the morning 3 of 3,528): the servers, not the version.
   The stalls are 2–30 ms, median 8. With a 44 ms budget 18 of 59 ended past 58 ms; with
   38 ms about 5 would. v1.4b runs at 38 ms.
+
+- **Replaying real games exactly** (`tools/trace.py`): a dump build prints the board of
+  turn 0; with both players' moves from the log the engine replays the whole game, and
+  the result is checked against the score our bot printed every turn (0 mismatches).
+  `trace.py LOG --pos T` writes the bot's input at turn T, so any position of a real game
+  becomes a bench position. `trace_stats.py` counts, per side, what the snakes do with
+  their turns.
+- **What sZoom's snakes do differently (20 replayed games).** Between turns 10 and 50 his
+  snakes get closer to an apple on 52–59% of their turns, ours on 45–47%; ours have
+  nothing in reach 7–14% of the time, his 3–7%. A snake of length 3 has nothing in reach
+  half the time, on either side, and we carry twice as many snake-turns at length 3–4
+  as he does (1,190 against 598): he spreads the growth over his snakes, we feed one.
+  In margin the 20 games are level (+0.1 apples per game) while the results are 5–11–2.
+- **The bot stalled instead of eating when it was behind near the end.** Found on a game
+  the user pointed at (34–40, three apples, nothing for 100 turns). Replayed and turned
+  into a bench position: the snake walks to one step from the apple four times and
+  turns away. Eating brings the end nearer, the end is a loss, and the loss penalty
+  (8.7) exists only in finished games; not eating keeps the game "open" inside the
+  search horizon. With the bonus applied as soon as the lead exceeds the apples left,
+  the same position is played out in 23–64 turns and the apple is eaten.
+- **The elevation bonus cancels the pull downwards.** At 0.04 per row against 0.045 per
+  cell of distance, a step down toward a far apple is worth nothing. It was 0.01 before
+  the SPSA run; at 400 games 0.01 and 0.04 are equal in self-play.
+- Before blaming the reach tables, print them: the distance that looked "shorter than
+  possible" was right; the snake's run had been left out of the reading.
 
 ## Arena notes
 

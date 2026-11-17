@@ -9,6 +9,7 @@
 //   referee --gen GAMES ITERS SEED OUT [EPS]    self-play records for training
 //   referee --export OUT IN...                  records -> features and labels
 //   referee --evalcheck NET RECORDS N           net output of the engine on the first N records
+//   referee --trace FILE                        replay a recorded game, print every position (tools/trace.py)
 // Every map is played twice with the seats swapped. -n sets SB_ITERS for both bots
 // (fixed iterations per move); without it the bots use their own clock.
 #define SB_NO_MAIN
@@ -539,7 +540,104 @@ static Result playGame(const Map &m, const char *bot0, const char *bot1, long it
 }
 
 // ───────────────────────────── match ─────────────────────────────
+
+// --trace FILE: replay a recorded game through the engine and print every position.
+// FILE: "W H", H rows of '#'/'.', "A" then A lines "x y" (apples), "N" then N lines of
+// three "x y" pairs (each snake head first; the first N/2 are player 0's), "T" then T lines
+// of N direction indexes (-1: none given, the snake keeps its facing).
+// Output, one line per position: turn | len0 len1 | losses0 losses1 | apples left | per
+// snake "alive len headx heady nearestAppleX nearestAppleY dist" | apples eaten this turn
+// as "snake:x,y".
+static int traceGame(const char *path, int dumpTurn = -1) {
+    FILE *fp = fopen(path, "r");
+    if (!fp) return 1;
+    int w, h, na, n, T;
+    if (fscanf(fp, "%d %d", &w, &h) != 2) return 1;
+    W = w, H = h, LIMY = H + 1 + OY;
+    State S;
+    memset(S.occ, EMPTY, CELLS);
+    for (int c = 0; c < CELLS; c++) {
+        int x = c & 63, y = c >> 6;
+        if (x == 0 || x == STRIDE - 1 || y == 0 || y == ROWS - 1) S.occ[c] = VOID;
+    }
+    for (int y = 0; y < h; y++) {
+        char row[128];
+        fscanf(fp, "%s", row);
+        for (int x = 0; x < w; x++)
+            if (row[x] == '#') S.occ[cellOf(x, y)] = WALL;
+    }
+    memcpy(baseOcc, S.occ, CELLS);
+    fscanf(fp, "%d", &na);
+    S.napples = na;
+    for (int i = 0, x, y; i < na; i++) fscanf(fp, "%d %d", &x, &y), S.occ[cellOf(x, y)] = APPLE;
+    fscanf(fp, "%d", &n);
+    NS = n;
+    for (int i = 0; i < n; i++) {
+        OWNER[i] = i >= n / 2, CGID[i] = i;
+        Snake &k = S.s[i];
+        k.alive = 1, k.len = 3, k.h = 2;
+        for (int j = 0, x, y; j < 3; j++) fscanf(fp, "%d %d", &x, &y), k.b[2 - j] = cellOf(x, y), S.occ[k.b[2 - j]] = SNAKE + i;
+    }
+    S.turn = 0, S.losses[0] = S.losses[1] = 0;
+    S.recount();
+    initDistances(S);
+    fscanf(fp, "%d", &T);
+    string eaten;
+    for (int t = 0;; t++) {
+        if (t == dumpTurn) {                         // the bot's input for player 0 at this turn (for SB_BENCH)
+            printf("0\n%d\n%d\n", w, h);
+            for (int y = 0; y < h; y++) {
+                for (int x = 0; x < w; x++) putchar(baseOcc[cellOf(x, y)] == WALL ? '#' : '.');
+                putchar('\n');
+            }
+            printf("%d\n", n / 2);
+            for (int i = 0; i < n; i++) printf("%d\n", i);
+            printf("%d\n", S.napples);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    if (S.occ[cellOf(x, y)] == APPLE) printf("%d %d\n", x, y);
+            int live = 0;
+            for (int i = 0; i < n; i++) live += S.s[i].alive;
+            printf("%d\n", live);
+            for (int i = 0; i < n; i++) {
+                if (!S.s[i].alive) continue;
+                printf("%d ", i);
+                for (int j = 0; j < S.s[i].len; j++) printf("%s%d,%d", j ? ":" : "", cx(S.s[i].part(j)), cy(S.s[i].part(j)));
+                putchar('\n');
+            }
+            return 0;
+        }
+        if (dumpTurn < 0) printf("%d | %d %d | %d %d | %d |", S.turn, S.len[0], S.len[1], S.losses[0], S.losses[1], S.napples);
+        for (int i = 0; i < n && dumpTurn < 0; i++) {
+            const Snake &k = S.s[i];
+            if (!k.alive) { printf(" 0 0 0 0 0 0 255"); continue; }
+            int l, r, bd = 255, ba = -1;
+            reachIdx(S, i, l, r);
+            const uint8_t *row = GDROW(l, r, k.head());
+            for (int a = 0; a < nApple0; a++)
+                if (S.occ[appleCell[a]] == APPLE && row[a] < bd) bd = row[a], ba = a;
+            printf(" 1 %d %d %d %d %d %d", k.len, cx(k.head()), cy(k.head()), ba < 0 ? -1 : cx(appleCell[ba]), ba < 0 ? -1 : cy(appleCell[ba]), bd);
+        }
+        if (dumpTurn < 0) printf(" |%s\n", eaten.c_str());
+        if (t >= T || S.terminal()) break;
+        int8_t mv[MAXS];
+        eaten.clear();
+        for (int i = 0, d; i < n; i++) {
+            fscanf(fp, "%d", &d);
+            mv[i] = d < 0 ? S.s[i].facing() : d;
+            if (S.s[i].alive && ((mv[i] + 2) & 3) == S.s[i].facing()) mv[i] = S.s[i].facing();   // a backward command is ignored
+            if (S.s[i].alive) {
+                int c = S.s[i].head() + DELTA[mv[i]];
+                if (S.occ[c] == APPLE) eaten += " " + to_string(i) + ":" + to_string(cx(c)) + "," + to_string(cy(c));
+            }
+        }
+        S.step(mv);
+    }
+    return 0;
+}
+
 int main(int argc, char **argv) {
+    if (argc >= 3 && !strcmp(argv[1], "--trace")) return traceGame(argv[2], argc > 3 ? atoi(argv[3]) : -1);
     signal(SIGPIPE, SIG_IGN);
     if (argc >= 3 && !strcmp(argv[1], "--map")) {
         printMap(makeMap(strtoull(argv[2], 0, 10), argc > 3 ? atoi(argv[3]) : 4));

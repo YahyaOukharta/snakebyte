@@ -101,3 +101,23 @@
 {"src": "v1.3.cpp", "opp": "6806653", "scores": [19, 20], "ranking": "1 0", "result": 0, "log": "test-923197190.log", "desync": false}
 {"src": "v1.3.cpp", "opp": "6771468", "scores": [33, 33], "ranking": "0 1", "result": 0.5, "log": "test-923197938.log", "desync": false}
 {"src": "v1.3.cpp", "opp": "6806653", "scores": [21, 21], "ranking": "0 1", "result": 0.5, "log": "test-923198428.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [19, 22], "ranking": "1 0", "result": 0, "log": "test-923201334.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [32, 25], "ranking": "0 1", "result": 1, "log": "test-923201878.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": null, "ranking": "0 1", "result": null, "log": "test-923202376.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [35, 30], "ranking": "0 1", "result": 1, "log": "test-923202701.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [24, 26], "ranking": "1 0", "result": 0, "log": "test-923203106.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [25, 27], "ranking": "1 0", "result": 0, "log": "test-923203649.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [23, 24], "ranking": "1 0", "result": 0, "log": "test-923204299.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [33, 35], "ranking": "1 0", "result": 0, "log": "test-923204757.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [34, 35], "ranking": "1 0", "result": 0, "log": "test-923205186.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [28, 12], "ranking": "0 1", "result": 1, "log": "test-923205748.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [40, 40], "ranking": "0 1", "result": 0.5, "log": "test-923206285.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [18, 21], "ranking": "1 0", "result": 0, "log": "test-923206804.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [11, 11], "ranking": "0 1", "result": 0.5, "log": "test-923207355.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [35, 28], "ranking": "0 1", "result": 1, "log": "test-923207735.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [16, 12], "ranking": "0 1", "result": 1, "log": "test-923208076.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [27, 35], "ranking": "1 0", "result": 0, "log": "test-923208471.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [28, 29], "ranking": "1 0", "result": 0, "log": "test-923208930.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [13, 23], "ranking": "1 0", "result": 0, "log": "test-923209505.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": null, "ranking": "1 0", "result": null, "log": "test-923209707.log", "desync": false}
+{"src": "dump14.cpp", "opp": "6771468", "scores": [24, 28], "ranking": "1 0", "result": 0, "log": "test-923209933.log", "desync": false}

@@ -335,6 +335,13 @@ PARAM(EV_ALIVE, 1.39);      // per live snake more than the opponent
 PARAM(EV_UG, 0.0065);         // a snake with no apple in reach: cost per cell to the nearest apple a longer snake could reach
 PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, so the squash stays in its steep part
 PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
+PARAM(DECIDED, 1);        // 1: a lead larger than the apples left gets the win bonus before the end, so the loser gains nothing by not finishing
+PARAM(WIN_SMOOTH, 0);     // share of the win bonus given before the end, as tanh(lead / WIN_T) x (apples eaten / apples at the start)^2: no cliff at the last apple
+PARAM(WIN_T, 2);
+PARAM(TBL_DROP, 0);      // reach tables: 1 = a snake that steps off at full stretch falls until its head is on a supported cell, 0 = it drops one row
+PARAM(EV_SHORT, 0);      // bonus per part for a live snake longer than SHORT_L: short snakes reach little
+PARAM(SHORT_L, 3);
+PARAM(SHORT_N, 1);       // ... for each of the first SHORT_N parts above SHORT_L
 PARAM(EV_PROX, 0);       // apple density: sum over the apples a side is nearest to of 1 / (1 + distance)
 PARAM(EV_BANK, 0);       // per apple I reach at least BANK_M moves before the opponent (or alone): it is mine later anyway
 PARAM(BANK_M, 6);
@@ -434,7 +441,13 @@ static void bfsGravity(int a) {
                 else if (k == 2) relax(c, r);
                 else if (r >= 1) relax(c, r - 1);
             }
-            if (sn || r == L - 1) {                  // arrived here by dropping one row after a sideways step
+            if (TBL_DROP != 0) {                     // arrived here by falling after a sideways step: a fall goes on
+                if (sn)                              // until the head is on a supported cell, however far that is
+                    for (int m = n - STRIDE; !tblBlock[m] && !supc[m] && m != A; m -= STRIDE) {
+                        if (!tblBlock[m - 1] && m - 1 != A) relax(m - 1, L - 1);
+                        if (!tblBlock[m + 1] && m + 1 != A) relax(m + 1, L - 1);
+                    }
+            } else if (sn || r == L - 1) {           // old model: every sideways step at full stretch drops one row
                 int m = n - STRIDE;
                 if (!tblBlock[m] && !supc[m] && m != A) {
                     if (!tblBlock[m - 1] && m - 1 != A) relax(m - 1, L - 1);
@@ -742,6 +755,11 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
         for (int i = 0; i < NS; i++) own[i] = S.s[i].alive ? S.s[i].len - root.s[i].len : -(double)root.s[i].len;
         return raw;
     }
+    if (WIN_SMOOTH != 0 && nApple0 > 0) {
+        double ph = 1.0 - (double)S.napples / nApple0, d = diff != 0 ? diff : 0.5 * (S.losses[1] - S.losses[0]);
+        raw += EV_WIN * WIN_SMOOTH * ph * ph * tanh(d / WIN_T);
+    }
+    if (DECIDED != 0 && (diff > S.napples || -diff > S.napples)) raw += diff > 0 ? EV_WIN : -EV_WIN;
     Scan c;
     scanApples(S, c);
     raw += EV_PROX * (c.prox[0] - c.prox[1]) + EV_BANK * (c.bank[0] - c.bank[1]) + EV_SOFT * c.soft + EV_OWN * (c.owned[0] - c.owned[1]) + EV_ALIVE * (S.alive[0] - S.alive[1]);              // an apple nobody can reach, or a tie, counts for nobody
@@ -757,6 +775,10 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
         double dc = c.d1[i] <= EV_N1 ? EV_S1 * c.d1[i] : EV_S1 * EV_N1 + EV_S2 * (far < EV_N2 ? far : EV_N2);
         if (c.d1[i] == 255 && EV_UG != 0) dc = EV_S1 * EV_N1 + EV_S2 * EV_N2 - EV_UG * (40 - (c.du[i] < 40 ? c.du[i] : 40));
         if (c.d1[i] == 255) dc += EV_STUCK;
+        if (EV_SHORT != 0) {                                     // a bonus, so that dying does not get cheaper
+            int extra = S.s[i].len - (int)SHORT_L;
+            dc -= EV_SHORT * (extra < 0 ? 0 : extra > SHORT_N ? SHORT_N : extra);
+        }
         double v = -dc + EV_ELEV * (H - cy(S.s[i].head()));
         raw += OWNER[i] == 0 ? v : -v;
         own[i] = S.s[i].len - root.s[i].len - dc + EV_OWNS * c.own[i];
