@@ -335,6 +335,8 @@ PARAM(EV_ALIVE, 1.39);      // per live snake more than the opponent
 PARAM(EV_UG, 0.0065);         // a snake with no apple in reach: cost per cell to the nearest apple a longer snake could reach
 PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, so the squash stays in its steep part
 PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
+PARAM(EV_PASS, 0);        // own credit: cost per pass in the line (the head ends where it was: up and fall back)
+PARAM(EV_TEMPO, 0);       // own credit: cost per cell of the snake's mean table distance to its nearest apple over the line (get there sooner)
 PARAM(DECIDED, 1);        // 1: a lead larger than the apples left gets the win bonus before the end, so the loser gains nothing by not finishing
 PARAM(WIN_SMOOTH, 0);     // share of the win bonus given before the end, as tanh(lead / WIN_T) x (apples eaten / apples at the start)^2: no cliff at the last apple
 PARAM(WIN_T, 2);
@@ -841,6 +843,7 @@ static __m128 maskTab[16];
 // nearF[i][c]: distance from cell c to the nearest apple still on the board that snake i
 // can reach at its root length. Filled once per search; the order of first visits follows it.
 static uint8_t nearF[MAXS][CELLS];
+static uint8_t nearT[MAXS][CELLS];   // the same for EV_TEMPO, capped at 40, filled whenever it is on
 
 static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t *F, int hd) {
     float e = (float)UCB_C * (nd.N < 65536 ? sqrtLog[nd.N] : sqrtf(logf((float)nd.N)));
@@ -940,6 +943,22 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
             }
         }
     }
+    if (EV_TEMPO != 0)
+        for (int i = 0; i < NS; i++) {
+            if (!root.s[i].alive) continue;
+            uint8_t *T = nearT[i];
+            memset(T, 40, CELLS);
+            int l, r;
+            reachIdx(root, i, l, r);
+            for (int a = 0; a < nApple0; a++) {
+                if (root.occ[appleCell[a]] != APPLE) continue;
+                for (int c = 0; c < CELLS; c++) {
+                    uint8_t g = GDROW(l, 0, c)[a];
+                    T[c] = g < T[c] ? g : T[c];
+                }
+            }
+        }
+    const bool tempo = EV_TEMPO != 0, passOn = EV_PASS != 0;
     int rootMask[MAXS];                                      // my snakes' moves at the root
     for (int i = 0; i < NS; i++) {
         if (!root.s[i].alive || OWNER[i] != 0) continue;
@@ -972,6 +991,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         memcpy(cur, roots, sizeof cur);
         int d = 0;
         double sum = 0;
+        int sumT[MAXS] = {0, 0, 0, 0, 0, 0, 0, 0}, passes[MAXS] = {0, 0, 0, 0, 0, 0, 0, 0};
         for (; d < depth && !S.terminal(); d++) {
             int8_t mv[MAXS];
             for (int i = 0; i < NS; i++) {
@@ -992,12 +1012,26 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                 cur[i] = pool[nd].ch[m];
             }
             PROF_END(P_SELECT);
+            int hd0[MAXS], ln0[MAXS];
+            if (passOn)
+                for (int i = 0; i < NS; i++) hd0[i] = S.s[i].head(), ln0[i] = S.s[i].len;
             S.step(mv);
+            if (passOn)
+                for (int i = 0; i < NS; i++)
+                    if (S.s[i].alive && S.s[i].head() == hd0[i] && S.s[i].len == ln0[i]) passes[i]++;
             sum += S.len[0] - S.len[1] - rootDiff;
+            if (tempo)
+                for (int i = 0; i < NS; i++)
+                    if (S.s[i].alive) sumT[i] += nearT[i][S.s[i].head()];
         }
         double own[MAXS];
         double raw = evaluate(S, d ? rootDiff + sum / d : rootDiff, root, own);
         scoreSum += squash(raw / EV_K);
+        if (passOn)
+            for (int i = 0; i < NS; i++) own[i] -= EV_PASS * passes[i];
+        if (tempo && d)
+            for (int i = 0; i < NS; i++)
+                if (S.s[i].alive) own[i] -= EV_TEMPO * sumT[i] / d;
         raw -= rootRaw;
         float val[MAXS];                                     // value for each snake's tree, player 0's view
         for (int i = 0; i < NS; i++)

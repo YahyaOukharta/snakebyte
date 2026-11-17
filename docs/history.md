@@ -93,6 +93,8 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Kaggle, 400 games each at 3000 iterations, on v1.4: value scale 6.5; own-credit weight 1.0; eat-sooner share 0.25; elevation 0.01; ownership 0.3; second depth step 700 | 400 each | −8; +13; −1; −6; −17; −1 (all ± 31): a plateau |
 | Bonus for a live snake above length 3 (`EV_SHORT`), as a cost on short snakes 1 / 2.5; as a bonus 1 / 2.5; for length above 4; graded over parts 4–6 at 0.4 / 0.8 | 100 each, 3000 it | −31 / −63; −10 / +14; −10; +38 / +10: nothing in self-play |
 | Graded short-snake bonus (0.4 per part for parts 4–6) **against sZoom**, dump build, replay stats; baseline v1.4b the same way | 20 / 18 gauntlet games | +3 −13 =4, margin −3.95 (baseline +5 −11 =2, margin +0.11). Our share of snake-turns at length 3–4 fell from 41% to 31% as intended (his: 21–27%) and it did not help: the even lengths are a result of his play, not the cause |
+| Tempo credit (`EV_TEMPO`): cost per cell of a snake's mean table distance over the line, 0.03 / 0.08 / 0.2 | 100 each, 3000 it | −24 / −3 / +3 |
+| Pass cost (`EV_PASS`): cost per move in the line that leaves the head where it was, 0.05 / 0.15 / 0.4 | 100 each, 3000 it | −14 / +3 / −7 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -279,6 +281,15 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   the SPSA run; at 400 games 0.01 and 0.04 are equal in self-play.
 - Before blaming the reach tables, print them: the distance that looked "shorter than
   possible" was right; the snake's run had been left out of the reading.
+
+- **Where our snakes lose their turns (18 replayed games against sZoom, turns 10–50).**
+  Split by the distance to the nearest reachable apple, both sides approach equally
+  often except in one band: at 7–10 moves we get closer on 46% of the turns and stay at
+  the same distance on 35%; he gets closer on 62% and stays on 16%. Of our "same" turns
+  there, 42% leave the head exactly where it was (up and fall back, a pass): 89 passes
+  against his 16. Some are real waits next to an enemy head; many are a snake stretched
+  to its full length, where every real move makes it fall and the table distance does
+  not improve, so the pass ties with everything else.
 
 ## Arena notes
 

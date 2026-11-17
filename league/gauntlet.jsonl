@@ -141,3 +141,7 @@
 {"src": "dump_short.cpp", "opp": "6771468", "scores": [26, 36], "ranking": "1 0", "result": 0, "log": "test-923237802.log", "desync": false}
 {"src": "dump_short.cpp", "opp": "6771468", "scores": [25, 26], "ranking": "1 0", "result": 0, "log": "test-923238068.log", "desync": false}
 {"src": "dump_short.cpp", "opp": "6771468", "scores": [23, 24], "ranking": "1 0", "result": 0, "log": "test-923238411.log", "desync": false}
+{"src": "dump_tempo.cpp", "opp": "6771468", "scores": [26, 28], "ranking": "1 0", "result": 0, "log": "test-923245362.log", "desync": false}
+{"src": "dump_tempo.cpp", "opp": "6771468", "scores": [28, 34], "ranking": "1 0", "result": 0, "log": "test-923245810.log", "desync": false}
+{"src": "dump_tempo.cpp", "opp": "6771468", "scores": [29, 32], "ranking": "1 0", "result": 0, "log": "test-923246203.log", "desync": false}
+{"src": "dump_tempo.cpp", "opp": "6771468", "scores": [23, 23], "ranking": "0 1", "result": 0.5, "log": "test-923246559.log", "desync": false}
