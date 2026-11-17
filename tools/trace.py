@@ -2,8 +2,9 @@
 """Rebuild a CodinGame game from a dump-build log and replay it through the engine.
 
   trace.py LOG [-o OUT.trace]      prints the engine's line for every turn (referee --trace)
-The log must come from a build with `#define DUMP n` (the board of turn 0 is in our stderr)
-played from the first seat. The replay is checked against the score our bot printed on
+The first position comes from the seed in the log through the official map generator
+(tools/mapdump/build.sh, needs referee-src and a JDK); without it, from the board a build with
+`#define DUMP n` printed on turn 0. The replay is checked against the score our bot printed on
 every turn: a mismatch means the reconstruction is wrong.
 """
 import os, re, subprocess, sys
@@ -11,32 +12,53 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIRS = {"UP": 0, "RIGHT": 1, "DOWN": 2, "LEFT": 3}
 
 
+def from_seed(text):
+    """First position from the seed in the log, through the official generator (tools/mapdump)."""
+    cp = os.path.join(ROOT, "build", "mapdump")
+    seed = re.search(r"seed=(-?\d+)", text).group(1)
+    out = subprocess.check_output(["java", "-cp", cp + ":" + open(os.path.join(cp, "classpath")).read().strip(), "MapDump", seed]).decode().split("\n")
+    W, H = map(int, out[1].split())
+    grid = [list(r) for r in out[2:2 + H]]
+    k = 2 + H
+    na = int(out[k]); apples = [tuple(map(int, l.split())) for l in out[k + 1:k + 1 + na]]
+    k += 1 + na
+    nb = int(out[k]); birds = []
+    for l in out[k + 1:k + 1 + nb]:
+        v = list(map(int, l.split()))
+        birds.append([(v[i], v[i + 1]) for i in range(0, len(v), 2)])
+    return W, H, grid, apples, birds
+
+
 def parse(path):
     text = open(path).read()
     frames = re.split(r"\nframe (\d+)(?: agent (\d))?", text)
-    m = re.search(r"tables \d+ ms, \d+ apples, (\d+)x(\d+)", text)
-    W, H = int(m.group(1)), int(m.group(2))
-    # the board of turn 0: the H + 2 lines before the first stdout
-    first = text[text.index("tables "):]
-    lines = first[:first.index("\n  stdout:")].split("\n")
-    board = lines[-(H + 2):]
-    x0 = board[-1].index("#")                      # the floor starts at x = 0
-    grid = [[(row + " " * 200)[x0 + x] for x in range(W)] for row in board[2:]]
-    apples = [(x, y) for y in range(H) for x in range(W) if grid[y][x] == "o"]
-    per = len(set(c.lower() for row in grid for c in row if c.isalpha() and c not in "o")) // 2
-    snakes = []
-    for owner, base in ((0, "a"), (1, "w")):
-        for k in range(per):
-            ch = chr(ord(base) + k)
-            cells = [(x, y) for y in range(H) for x in range(W) if grid[y][x].lower() == ch]
-            head = next(c for c in cells if grid[c[1]][c[0]].isupper())
-            body, rest = [head], [c for c in cells if c != head]
-            while rest:                            # follow the body from the head
-                nxt = next(c for c in rest if abs(c[0] - body[-1][0]) + abs(c[1] - body[-1][1]) == 1)
-                body.append(nxt), rest.remove(nxt)
-            snakes.append(body)
+    me = int(re.search(r"\n  (\d) \S+ \(me", text).group(1))      # our seat: our snakes come first in the engine
+    if os.path.exists(os.path.join(ROOT, "build", "mapdump", "MapDump.class")):
+        W, H, grid, apples, birds = from_seed(text)
+        per = len(birds) // 2
+        snakes = birds if me == 0 else birds[per:] + birds[:per]
+    else:                                              # no generator: the board a dump build printed on turn 0
+        m = re.search(r"tables \d+ ms, \d+ apples, (\d+)x(\d+)", text)
+        W, H = int(m.group(1)), int(m.group(2))
+        first = text[text.index("tables "):]
+        lines = first[:first.index("\n  stdout:")].split("\n")
+        board = lines[-(H + 2):]
+        x0 = board[-1].index("#")                      # the floor starts at x = 0
+        grid = [[(row + " " * 200)[x0 + x] for x in range(W)] for row in board[2:]]
+        apples = [(x, y) for y in range(H) for x in range(W) if grid[y][x] == "o"]
+        per = len(set(c.lower() for row in grid for c in row if c.isalpha() and c not in "o")) // 2
+        snakes = []
+        for owner, base in ((0, "a"), (1, "w")):
+            for k in range(per):
+                ch = chr(ord(base) + k)
+                cells = [(x, y) for y in range(H) for x in range(W) if grid[y][x].lower() == ch]
+                head = next(c for c in cells if grid[c[1]][c[0]].isupper())
+                body, rest = [head], [c for c in cells if c != head]
+                while rest:                            # follow the body from the head
+                    nxt = next(c for c in rest if abs(c[0] - body[-1][0]) + abs(c[1] - body[-1][1]) == 1)
+                    body.append(nxt), rest.remove(nxt)
+                snakes.append(body)
     n = 2 * per
-    me = int(re.search(r"\n  (\d) \S+ \(me", text).group(1))      # our seat: our snakes are a.. in the dump, engine 0..per-1
     # moves: one stdout per agent per turn
     outs = {0: [], 1: []}
     for i in range(1, len(frames), 3):

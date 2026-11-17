@@ -80,3 +80,25 @@ Details that mattered to their authors:
   at league openings (jacek, Sheeesh).
 - Local referees give false timeouts at 50 ms under load.
 - A local pool of similar bots overfits (0x6E0FF).
+
+## Public bot sources (searched 2026-11-17)
+
+No top-Legend bot is public; every top finisher published a write-up only. With full source:
+
+| Repository | Language | Claimed level | Notes |
+|---|---|---|---|
+| AlesPokorny/CodinGame_winter_2026 | Rust | Legend #169 | per-snake BFS with gravity, depth 20, avoids contested targets |
+| DGankutsuou/Winter_challenge_2026 | C++ | unknown | Smitsimax, depth 5, length and Manhattan distance |
+| SebastienDestannes/snakebot | C++17 | unknown | alpha-beta, Voronoi, dead-end detection, collector / blocker roles; uses threads |
+| 4tunea/CodinGameWinterChallenge2026 | C++ | Gold | |
+| olety/codingame-winter-2026 | C | Silver | 1-ply maximin |
+| minetonight/snake-byte | C++ / Python | low | fifteen variants |
+
+Write-up not seen before: zikotissam (claims 3rd, github.com/zikotissam/Winter-Challenge-2026):
+DUCT with one tree per snake, **prior-guided UCB**, Dijkstra maps with asymmetric costs,
+depth up to 20, Optuna and a genetic algorithm for the weights, a local C++ referee.
+
+Runners: aexg/WinterChallenge2026-Exotec (the official referee with a command line for
+cg-brutaltester), mrsombre/codingame-arena (Go), psyleague. The SDK's random generator is
+`SecureRandom.getInstance("SHA1PRNG")` with `setSeed(seed)`
+(MultiplayerGameManager.java), which is what tools/mapdump uses.
