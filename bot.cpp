@@ -355,7 +355,7 @@ PARAM(SOFT_CAP, 40);     // distance used for "cannot reach"
 PARAM(EV_STUCK, 0);      // extra cost for a snake with no apple in reach: it will not grow again
 PARAM(EV_VOR, 0.25);        // per apple more in my Voronoi territory than in the opponent's (flood from the heads, bodies block)
 PARAM(EV_VORC, 0);       // per cell of territory more
-PARAM(VOR_STEPS, 32);    // the flood stops after this many steps
+PARAM(VOR_STEPS, 14);    // the flood stops after this many steps
 PARAM(VOR_TAIL, 1);      // parts at the tail end that do not block (they will have moved)
 PARAM(EV_MEAN, 0.5);     // share of the mean length difference along the line (eat sooner)
 PARAM(D_BASE, 3);        // depth = D_BASE + iterations / D_STEP1 until D_SW iterations ...
@@ -515,10 +515,12 @@ struct Vor { int ap[2], cells[2]; };
 static void voronoi(const State &S, Vor &v) {
     enum { R = 28 };
     const int n = H, tailSkip = (int)VOR_TAIL;
-    uint64_t fr[R], bufA[2][R], bufB[2][R], oa[R], ob[R];
+    const bool cells = EV_VORC != 0;
+    uint64_t fr[R], bufA[2][R], bufB[2][R], ap[R];
     for (int y = 0; y < n; y++) fr[y + 1] = GRID[y + OY];
     fr[0] = fr[n + 1] = 0;
-    memset(bufA, 0, sizeof bufA), memset(bufB, 0, sizeof bufB);
+    memset(bufA, 0, sizeof bufA), memset(bufB, 0, sizeof bufB), memset(ap, 0, sizeof ap);
+    int lo = n, hi = 1;                              // rows the frontier can be in
     for (int i = 0; i < NS; i++) {
         const Snake &k = S.s[i];
         if (!k.alive) continue;
@@ -527,15 +529,29 @@ static void voronoi(const State &S, Vor &v) {
             if ((unsigned)r < (unsigned)n) fr[r + 1] &= ~(1ull << (c & 63));
         }
         int c = k.head(), r = (c >> 6) - OY;
-        if ((unsigned)r < (unsigned)n) (OWNER[i] ? bufB[0] : bufA[0])[r + 1] |= 1ull << (c & 63);
+        if ((unsigned)r < (unsigned)n) {
+            (OWNER[i] ? bufB[0] : bufA[0])[r + 1] |= 1ull << (c & 63);
+            if (r + 1 < lo) lo = r + 1;
+            if (r + 1 > hi) hi = r + 1;
+        }
     }
+    for (int a = 0; a < nApple0; a++) {
+        int c = appleCell[a];
+        if (S.occ[c] == APPLE) ap[(c >> 6) - OY + 1] |= 1ull << (c & 63);
+    }
+    uint64_t oa[R], ob[R];
     memset(oa, 0, sizeof oa), memset(ob, 0, sizeof ob);
     int cur = 0;
-    for (int step = 0, lim = (int)VOR_STEPS; step < lim; step++) {
+    // Only the rows the frontier has reached are swept (one more on each side per step),
+    // and the flood stops when no apple is left on a free cell: the result is the same,
+    // the work is not. The inner loop is bit operations only, so it vectorises.
+    for (int step = 0, lim = (int)VOR_STEPS; step < lim && lo <= hi; step++) {
         const uint64_t *A = bufA[cur], *B = bufB[cur];
         uint64_t *na = bufA[cur ^ 1], *nb = bufB[cur ^ 1];
         uint64_t any = 0;
-        for (int y = 1; y <= n; y++) {
+        if (lo > 1) lo--;
+        if (hi < n) hi++;
+        for (int y = lo; y <= hi; y++) {
             uint64_t ea = (A[y] << 1 | A[y] >> 1 | A[y - 1] | A[y + 1]) & fr[y];
             uint64_t eb = (B[y] << 1 | B[y] >> 1 | B[y - 1] | B[y + 1]) & fr[y];
             uint64_t a = ea & ~eb, b = eb & ~ea;
@@ -545,17 +561,18 @@ static void voronoi(const State &S, Vor &v) {
             any |= a | b;
         }
         if (!any) break;
+        if (!cells) {
+            uint64_t rem = 0;
+            for (int y = 1; y <= n; y++) rem |= ap[y] & fr[y];
+            if (!rem) break;
+        }
         cur ^= 1;
     }
     v.ap[0] = v.ap[1] = v.cells[0] = v.cells[1] = 0;
-    for (int a = 0; a < nApple0; a++) {
-        int c = appleCell[a];
-        if (S.occ[c] != APPLE) continue;
-        int r = (c >> 6) - OY + 1;
-        v.ap[0] += oa[r] >> (c & 63) & 1, v.ap[1] += ob[r] >> (c & 63) & 1;
+    for (int y = 1; y <= n; y++) {
+        if (ap[y]) v.ap[0] += __builtin_popcountll(oa[y] & ap[y]), v.ap[1] += __builtin_popcountll(ob[y] & ap[y]);
+        if (cells) v.cells[0] += __builtin_popcountll(oa[y]), v.cells[1] += __builtin_popcountll(ob[y]);
     }
-    if (EV_VORC != 0)
-        for (int y = 1; y <= n; y++) v.cells[0] += __builtin_popcountll(oa[y]), v.cells[1] += __builtin_popcountll(ob[y]);
 }
 
 // ───────────────────────────── value net ─────────────────────────────

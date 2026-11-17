@@ -313,6 +313,15 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   pattern as the start depth and the tuned net: what a change is worth at 3,000
   iterations says little about 7,000.
 
+- **What a leaf costs (v1.4b, laptop, per leaf):** reach-table terms 0.9 µs, the Voronoi
+  flood 1.0 µs, the net 0.6 µs; the evaluation is 40% of the search time against 14%
+  before the flood and the net. The flood runs 15.7 steps on average over 21 rows.
+  Sweeping only the rows the frontier has reached and stopping once no apple is left
+  unclaimed changes nothing in mid-game (apples behind bodies keep it going) and
+  helps when few apples are left. Counting inside the sweep made it 15% slower: the loop
+  must stay pure bit operations to be vectorised. The cap is now 14 steps (400 games on
+  Kaggle: +20 ± 30 against 32).
+
 ## Arena notes
 
 - v1.0 run: 14.1 at 6%, 17.9 at 19%, 19.0 at 22%, 19.5 at 42%, 19.0 at 54%, then replaced
