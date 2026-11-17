@@ -335,6 +335,7 @@ PARAM(EV_ALIVE, 1.39);      // per live snake more than the opponent
 PARAM(EV_UG, 0.0065);         // a snake with no apple in reach: cost per cell to the nearest apple a longer snake could reach
 PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, so the squash stays in its steep part
 PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
+PARAM(MERGE, 0);          // state merging: a snake's node is (depth mod MERGE, head cell, facing) whatever path led there; 0 = plain trees. 2 = by parity, 16 = by depth
 PARAM(EV_TEAM, 0);        // 1: a snake's distance cost uses the nearest apple it is its side's closest snake to (if any), so team-mates split up
 PARAM(EV_PASS, 0);        // own credit: cost per pass in the line (the head ends where it was: up and fall back)
 PARAM(EV_TEMPO, 0);       // own credit: cost per cell of the snake's mean table distance to its nearest apple over the line (get there sooner)
@@ -818,6 +819,17 @@ static inline uint32_t rnd() {
     rngS ^= rngS << 13, rngS ^= rngS >> 7, rngS ^= rngS << 17;
     return (uint32_t)(rngS >> 32);
 }
+// Merged nodes (MERGE): the node of snake i at depth key k with its head on cell c facing f.
+// Looked up in a table stamped with the number of the search, allocated from the pool.
+struct MRef { int32_t idx; uint32_t stamp; };
+static MRef *mref;
+static uint32_t mstamp = 0;
+static inline int newNode();
+static inline int mnode(int i, int k, int c, int f) {
+    MRef &r = mref[(((size_t)i * 16 + k) * CELLS + c) * 4 + f];
+    if (r.stamp != mstamp) r.stamp = mstamp, r.idx = newNode();
+    return r.idx;
+}
 static inline int newNode() {
     if (poolN >= POOL) return 0;
     memset(&pool[poolN], 0, sizeof(Node));
@@ -908,6 +920,7 @@ static long fixedIters = 0;      // LOCAL: iterations per move instead of time
 // Returns the chosen direction per snake in out[] (all snakes, opponents included).
 static void search(const State &root, double budgetMs, int8_t *out, const int8_t *played = nullptr) {
     auto t0 = chrono::steady_clock::now();
+    const int MD = MERGE > 15 ? 15 : (int)MERGE;
     int roots[MAXS];
     if (REUSE > 0 && played && haveTrees) {                  // keep what was searched under the moves played
         swap(pool, pool2);
@@ -921,7 +934,9 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         }
     } else {
         poolN = 1;
-        for (int i = 0; i < NS; i++) roots[i] = root.s[i].alive ? newNode() : 0;
+        mstamp++;
+        for (int i = 0; i < NS; i++)
+            roots[i] = !root.s[i].alive ? 0 : MD ? mnode(i, 15, root.s[i].head(), root.s[i].facing()) : newNode();   // the root keeps a node of its own
     }
     static int pathNode[64][MAXS];
     static int8_t pathMove[64][MAXS];
@@ -1013,8 +1028,10 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                 mv[i] = m;
                 pathNode[d][i] = nd;
                 pathMove[d][i] = m;
-                if (!pool[nd].ch[m]) pool[nd].ch[m] = newNode();
-                cur[i] = pool[nd].ch[m];
+                if (!MD) {
+                    if (!pool[nd].ch[m]) pool[nd].ch[m] = newNode();
+                    cur[i] = pool[nd].ch[m];
+                }
             }
             PROF_END(P_SELECT);
             int hd0[MAXS], ln0[MAXS];
@@ -1024,6 +1041,9 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
             if (passOn)
                 for (int i = 0; i < NS; i++)
                     if (S.s[i].alive && S.s[i].head() == hd0[i] && S.s[i].len == ln0[i]) passes[i]++;
+            if (MD)                                          // merged: the next node is where the snake now is
+                for (int i = 0; i < NS; i++)
+                    if (S.s[i].alive) cur[i] = mnode(i, (d + 1) % MD, S.s[i].head(), S.s[i].facing());   // keys 0..MD-1
             sum += S.len[0] - S.len[1] - rootDiff;
             if (tempo)
                 for (int i = 0; i < NS; i++)
@@ -1069,6 +1089,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
 
 static void initSearch() {
     pool = (Node *)malloc(sizeof(Node) * POOL);
+    mref = (MRef *)calloc((size_t)MAXS * 16 * CELLS * 4, sizeof(MRef));
     pool2 = (Node *)malloc(sizeof(Node) * POOL);
     for (int i = 1; i < 65536; i++) sqrtLog[i] = sqrtf(logf((float)i));
 #if defined(__x86_64__)

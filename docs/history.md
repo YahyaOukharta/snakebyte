@@ -13,7 +13,7 @@ maps, both seats). Self-play overstates arena gains.
 | v1.2 | path-based reach model (cell + unsupported run); an apple one cell beyond the head's reach counts as reachable; model 64 rows high (20 above the grid); 44 ms from the first input line | vs v1.1: real time +38 −35 =27 (+10 ± 59); 3000 iterations +67, −14 (200 games, +26 ± 44); vs the static model at 1000 iterations +51 ± 45 (200 games) | **32.14**; 159 battles: +87 −49 =23 | **3** |
 | v1.3 | reach tables hold on walls only (an eaten apple was support for ever); Voronoi apple territory at the leaves (flood from the heads on bit rows, bodies block), weight 0.25; value net n0b added to the handcrafted value (72 → 96 → 32 → 1, column-form forward pass); 15 parameters from SPSA; reach table with the apple index innermost | vs v1.2: real time +60 −21 =19 (**+143 ± 66**) | **33.30**; 159 battles: +81 −60 =18 (sZoom +3 −17 =3, _H3R0_ +4 −14 =2, ranks 4–9 +51 −28) | **3** |
 | v1.4 | net n2a on 83 inputs (adds Voronoi apples per side, soft ownership, reachable apples per snake; trained on records re-exported with walls-only tables); distance cost flat near and steep far (0.02 × 6 cells + 0.045 × 20 instead of 0.07 × 11 + 0.015 × 16); reach tables limited to the grid plus a margin, with a 700 ms guard | vs v1.3: real time +54 −21 =25 (**+119 ± 62**), 3000 iterations +96 ± 66 | 31.0 at 33% with 5 timeouts in 35 battles: replaced | |
-| v1.4b | v1.4 with 38 ms per turn instead of 44 | | running | |
+| v1.4b | v1.4 with 38 ms per turn instead of 44 | | **33.68**; no timeout of ours in the battles checked | **3** |
 
 ## Measurements
 
@@ -97,6 +97,10 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Pass cost (`EV_PASS`): cost per move in the line that leaves the head where it was, 0.05 / 0.15 / 0.4 | 100 each, 3000 it | −14 / +3 / −7 |
 | Tempo credit 0.2 **against sZoom**, dump build, replay stats (`tools/gauntlet_stats.py`) | 20 gauntlet games | +3 −14 =3, margin −2.9. At 7–10 moves our snakes now get closer on 61% of the turns (46% before; his 60–62%) and pass 1.3 times a game (5.0 before; his 0.9–1.4), and we still eat 1.2 apples fewer than he does in turns 10–50: the wasted turns were a symptom |
 | Assignment-aware distance (`EV_TEAM`): a snake's cost uses the nearest apple it is its side's closest snake to | 200, 3000 it | +45, −45 |
+| **State merging** (`MERGE`): a snake's node is (depth mod k, head cell, facing) instead of its move sequence. k = 2 / 16 / 4 vs plain trees | 100–200 each, 3000 it | +45, +45 / 0 / +49 |
+| Merging k = 2 with a deeper schedule (second step 400); UCB 1.1; start depth 6 | 100 each, 3000 it | +14; +35; −28 |
+| Merging k = 2 at **7000 iterations**: usual schedule; second depth step 2000 (depth 10 instead of 13); plain trees with that schedule | 100–200 each | +3, −28; **+42, +31**; −14 |
+| Merging k = 2 in **real time** vs v1.4b: usual schedule; k = 4; slow schedule (three batches) | 100 each | −10; −74; +14, 0, +17 (pooled +10 ± 35) |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -301,6 +305,13 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   variants all score 15–30% against sZoom with margins between +0.1 and −4; the spread
   between runs of the same build is as large. The replay statistics show what a change
   does to the behaviour, not whether it wins.
+
+- **State merging helps a shallow search and fades at the real budget.** Merged nodes
+  are sampled far more often, which is worth +45 at 3,000 iterations. At 7,000 it needs
+  a slower depth schedule to keep +35, and in real time against v1.4b it is +10 ± 35
+  over 300 games. Speed is unchanged (556 against 594 ns per simulated turn). Same
+  pattern as the start depth and the tuned net: what a change is worth at 3,000
+  iterations says little about 7,000.
 
 ## Arena notes
 
