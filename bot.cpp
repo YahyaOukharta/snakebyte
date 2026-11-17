@@ -340,6 +340,12 @@ PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, s
 PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
 PARAM(TOGO, 0);           // 1: a node is backed up with what happened from it on (the gains made before it are taken out); for merged nodes, whose visits have different pasts
 PARAM(MERGE, 0);          // state merging: a snake's node is (depth mod MERGE, head cell, facing) whatever path led there; 0 = plain trees. 2 = by parity, 16 = by depth
+PARAM(SAFE, 0);           // root safety: plies of worst-case check against the enemy snakes near one of mine (0 = off, 2)
+PARAM(SAFE_R, 5);
+PARAM(SAFE_NE, 2);        // ... at most this many of them (1 allows a deeper check)
+PARAM(SAFE_D, 0);         // root survival: a move is dropped if, with the other bodies fixed, the snake cannot make SAFE_D legal moves after it and another move can (0 = off)         // ... enemy heads within this many cells
+PARAM(EV_TRAP, 0);        // cost for a snake with no legal move at the leaf (it loses a part next turn), and TRAP1 x that for a single move left
+PARAM(TRAP1, 0);
 PARAM(EV_TEAM, 0);        // 1: a snake's distance cost uses the nearest apple it is its side's closest snake to (if any), so team-mates split up
 PARAM(EV_PASS, 0);        // own credit: cost per pass in the line (the head ends where it was: up and fall back)
 PARAM(EV_TEMPO, 0);       // own credit: cost per cell of the snake's mean table distance to its nearest apple over the line (get there sooner)
@@ -822,6 +828,19 @@ static inline float squash(double x) {              // cheap tanh
 }
 // own[i]: what snake i itself contributed (growth since the root, minus its apple distance cost),
 // used to give each snake's tree a value that depends more on its own moves.
+// Directions snake i can move in without a collision (a tail cell counts as free); 0 = trapped.
+static inline int rawMask(const State &S, int i) {
+    const Snake &k = S.s[i];
+    int back = (k.facing() + 2) & 3, m = 0, hd = k.head();
+    for (int d = 0; d < 4; d++) {
+        if (d == back) continue;
+        int t = hd + DELTA[d];
+        uint8_t v = S.occ[t];
+        if (v < WALL) m |= 1 << d;
+        else if (v >= SNAKE && S.s[v - SNAKE].tail() == t) m |= 1 << d;
+    }
+    return m;
+}
 static double evaluate(const State &S, double meanDiff, const State &root, double *own) {
     double diff = S.len[0] - S.len[1];
     double raw = diff * (1 - EV_MEAN) + meanDiff * EV_MEAN + EV_LOSS * (S.losses[1] - S.losses[0]);
@@ -852,6 +871,11 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
         double dc = dd <= EV_N1 ? EV_S1 * dd : EV_S1 * EV_N1 + EV_S2 * (far < EV_N2 ? far : EV_N2);
         if (c.d1[i] == 255 && EV_UG != 0) dc = EV_S1 * EV_N1 + EV_S2 * EV_N2 - EV_UG * (40 - (c.du[i] < 40 ? c.du[i] : 40));
         if (c.d1[i] == 255) dc += EV_STUCK;
+        if (EV_TRAP != 0) {
+            int free = __builtin_popcount(rawMask(S, i));
+            if (free == 0) dc += EV_TRAP;
+            else if (free == 1) dc += EV_TRAP * TRAP1;
+        }
         if (EV_SHORT != 0) {                                     // a bonus, so that dying does not get cheaper
             int extra = S.s[i].len - (int)SHORT_L;
             dc -= EV_SHORT * (extra < 0 ? 0 : extra > SHORT_N ? SHORT_N : extra);
@@ -986,6 +1010,135 @@ static int lastIters, lastDepth, lastSims;
 static double lastScore;         // mean shared value of the last search, player 0's view, in (-1, 1)
 static long fixedIters = 0;      // LOCAL: iterations per move instead of time
 
+// ───────────────────────────── root safety ─────────────────────────────
+// The trees model an enemy snake as one that plays for apples like ours. The strongest
+// players also play to shut a snake in: they park on the only way out of a pocket and
+// the snake inside loses a part every turn against the wall. The search does not see that
+// coming (a ten times deeper search repeats 82% of such moves from real games), so the
+// root asks the worst case directly: for a move of snake i, can the enemy snakes nearby,
+// whatever i does afterwards, force it to lose parts within SAFE turns? Only forced losses
+// count, and a move is dropped only if another move cannot be punished at all.
+static int safeEnemies[2], safeNE;
+static int partsOf(const State &S, int i, int before, bool ate) {       // parts snake i lost in the last step
+    if (!S.s[i].alive) return before + 4;                               // the whole snake: worse than any beheading
+    return before + (ate ? 1 : 0) - S.s[i].len;
+}
+// Worst loss of snake i over the enemies' replies when it plays `mv` now and its best moves after.
+static int safeLoss(const State &S, int i, int mv, int depth, int cut) {
+    int8_t m[MAXS];
+    for (int j = 0; j < NS; j++) {                                       // everybody else keeps going if it can
+        if (!S.s[j].alive) { m[j] = 0; continue; }
+        int rm = rawMask(S, j), f = S.s[j].facing();
+        m[j] = rm >> f & 1 ? f : rm ? __builtin_ctz(rm) : f;
+    }
+    m[i] = mv;
+    int em[2][4], en[2] = {1, 1};
+    for (int e = 0; e < safeNE; e++) {
+        int j = safeEnemies[e];
+        en[e] = 0;
+        if (!S.s[j].alive) { em[e][en[e]++] = 0; continue; }
+        int back = (S.s[j].facing() + 2) & 3;
+        for (int d = 0; d < 4; d++)
+            if (d != back && S.occ[S.s[j].head() + DELTA[d]] != WALL && S.occ[S.s[j].head() + DELTA[d]] != VOID) em[e][en[e]++] = d;
+        if (!en[e]) em[e][en[e]++] = S.s[j].facing();
+    }
+    const int before = S.s[i].len;
+    const bool ate = S.occ[S.s[i].head() + DELTA[mv]] == APPLE;
+    int worst = 0;
+    for (int a = 0; a < en[0]; a++)
+        for (int b = 0; b < en[1]; b++) {
+            if (safeNE > 0) m[safeEnemies[0]] = em[0][a];
+            if (safeNE > 1) m[safeEnemies[1]] = em[1][b];
+            State T = S;
+            int eb[2] = {0, 0};
+            bool ea[2] = {false, false};
+            for (int e = 0; e < safeNE; e++) {
+                int j = safeEnemies[e];
+                eb[e] = S.s[j].len, ea[e] = S.s[j].alive && S.occ[S.s[j].head() + DELTA[m[j]]] == APPLE;
+            }
+            T.step(m);
+            int loss = partsOf(T, i, before, ate);
+            for (int e = 0; e < safeNE; e++)                             // what the enemy paid for it: a head-on is no punishment
+                if (S.s[safeEnemies[e]].alive) loss -= partsOf(T, safeEnemies[e], eb[e], ea[e]);
+            if (loss < 0) loss = 0;
+            if (depth > 1 && T.s[i].alive && !T.terminal()) {
+                int rm = rawMask(T, i), best = 99;
+                if (!rm) rm = 1 << T.s[i].facing();                      // no legal move: it will hit something
+                for (int d = 0; d < 4 && best > 0; d++)
+                    if (rm >> d & 1) best = min(best, safeLoss(T, i, d, depth - 1, 99));
+                loss += best;
+            }
+            if (loss > worst) worst = loss;
+            if (worst >= cut) return worst;                              // already no better than another move
+        }
+    return worst;
+}
+static int safeMask(const State &root, int i, int mask) {
+    const int hd = root.s[i].head(), R = (int)SAFE_R;
+    int dist[2] = {99, 99};
+    safeNE = 0;
+    for (int j = 0; j < NS; j++) {                                       // the two nearest enemy heads within R
+        if (!root.s[j].alive || OWNER[j] == OWNER[i]) continue;
+        int d = abs(cx(root.s[j].head()) - cx(hd)) + abs(cy(root.s[j].head()) - cy(hd));
+        if (d > R) continue;
+        if (safeNE < (int)SAFE_NE) dist[safeNE] = d, safeEnemies[safeNE++] = j;
+        else {
+            int w = safeNE > 1 && dist[1] > dist[0] ? 1 : 0;
+            if (d < dist[w]) dist[w] = d, safeEnemies[w] = j;
+        }
+    }
+    if (!safeNE || !(mask & (mask - 1))) return mask;                    // nobody near, or a single move anyway
+    int loss[4], best = 99;
+    for (int d = 0; d < 4; d++)
+        if (mask >> d & 1) loss[d] = safeLoss(root, i, d, (int)SAFE, 99), best = min(best, loss[d]);
+    if (best > 0) return mask;                                           // every move can be punished: let the search decide
+    int out = 0;
+    for (int d = 0; d < 4; d++)
+        if ((mask >> d & 1) && loss[d] == 0) out |= 1 << d;
+    return out;
+}
+
+// Survival: the evaluation has no idea of space, and snakes walked into pockets their own
+// body then closed (seen in real games: a wall hit every turn until the snake is gone).
+// Here the snake moves alone, with real physics, on a board where every other body is
+// a wall: can it make `depth` more moves without running into something?
+static int surviveNodes;
+static bool survives(const State &S, int i, int depth) {
+    if (depth == 0) return true;
+    int rm = rawMask(S, i);
+    for (int d = 0; d < 4; d++) {
+        if (!(rm >> d & 1)) continue;
+        if (++surviveNodes > 3000) return true;                          // out of budget: no verdict against the move
+        State T = S;
+        int8_t m[MAXS] = {0, 0, 0, 0, 0, 0, 0, 0};
+        m[i] = d;
+        T.step(m);
+        if (T.s[i].alive && survives(T, i, depth - 1)) return true;
+    }
+    return false;
+}
+static int surviveMask(const State &root, int i, int mask) {
+    if (!(mask & (mask - 1))) return mask;                               // a single move anyway
+    State A = root;
+    for (int j = 0; j < NS; j++) {                                       // the others become walls
+        if (j == i || !A.s[j].alive) continue;
+        for (int q = 0; q < A.s[j].len; q++) A.occ[A.s[j].part(q)] = WALL;
+        A.s[j].alive = 0;
+    }
+    A.recount();
+    int ok = 0;
+    for (int d = 0; d < 4; d++) {
+        if (!(mask >> d & 1)) continue;
+        State T = A;
+        int8_t m[MAXS] = {0, 0, 0, 0, 0, 0, 0, 0};
+        m[i] = d;
+        T.step(m);
+        surviveNodes = 0;
+        if (T.s[i].alive && survives(T, i, (int)SAFE_D)) ok |= 1 << d;
+    }
+    return ok ? ok : mask;
+}
+
 // Returns the chosen direction per snake in out[] (all snakes, opponents included).
 static void search(const State &root, double budgetMs, int8_t *out, const int8_t *played = nullptr) {
     auto t0 = chrono::steady_clock::now();
@@ -1066,6 +1219,8 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     if ((e == 1 || e == -1 || e == STRIDE || e == -STRIDE) && c != root.s[j].part(1)) safe &= ~(1 << d);
                 }
             }
+        if (SAFE != 0) safe = safeMask(root, i, safe ? safe : valid);
+        if (SAFE_D != 0) safe = surviveMask(root, i, safe ? safe : valid);
         rootMask[i] = safe ? safe : valid;
     }
     for (;;) {

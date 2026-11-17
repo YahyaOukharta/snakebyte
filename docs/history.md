@@ -15,7 +15,8 @@ maps, both seats). Self-play overstates arena gains.
 | v1.4 | net n2a on 83 inputs (adds Voronoi apples per side, soft ownership, reachable apples per snake; trained on records re-exported with walls-only tables); distance cost flat near and steep far (0.02 × 6 cells + 0.045 × 20 instead of 0.07 × 11 + 0.015 × 16); reach tables limited to the grid plus a margin, with a 700 ms guard | vs v1.3: real time +54 −21 =25 (**+119 ± 62**), 3000 iterations +96 ± 66 | 31.0 at 33% with 5 timeouts in 35 battles: replaced | |
 | v1.4b | v1.4 with 38 ms per turn instead of 44 | | **33.68**; no timeout of ours in the battles checked | **3** |
 | v1.5 | **state merging** in the search (a snake's node is its head cell, facing and depth parity; second depth step 2000 iterations); Voronoi flood capped at 14 steps; speed pass (about 5% on x86); packed source without end-of-line comments | vs v1.4b, real time: −21, +38, +21 (+13 ± 36); the same source with plain trees +28, +42, +24 (+31 ± 37) | **33.61** | **3** |
-| v1.6 | plain trees again (shared states were level over 1,600 real-time games and in the arena); net n3a trained on 120k games played by the v1.4b logic (generation 3; held-out accuracy 85.9%) | vs v1.5, real time, four batches of 50: +28, +78, −21, −92 (**0 ± 43**). Submitted at the user's wish | running | |
+| v1.6 | plain trees again (shared states were level over 1,600 real-time games and in the arena); net n3a trained on 120k games played by the v1.4b logic (generation 3; held-out accuracy 85.9%) | vs v1.5, real time, four batches of 50: +28, +78, −21, −92 (**0 ± 43**). Submitted at the user's wish | **33.11**: half a point under v1.4b / v1.5, replaced | 3 |
+| v1.7 | v1.5's source with plain trees and the net n2a again (the net that scored 33.6–33.7); root safety and survival checks in the source, off | | running | |
 
 ## Measurements
 
@@ -110,6 +111,11 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Plain trees vs merged (v1.5), **real time on Kaggle**, both accounts; merged with value-to-go vs merged | 1600; 800 | −20, −9, +15, −10 (**−6 ± 15**: level); −15, −21 |
 | Net n3a (generation 3: 120k games by the v1.4b logic at 2000 iterations, one position in five, 12 epochs; held-out accuracy 85.9%) on plain trees vs v1.5, real time | 4 × 50 | +28, +78, −21, −92: 0 ± 43 |
 | n3b: the same with 40% search score in the target | 50 | +7 |
+| Board windows as net inputs (9×9 around each head, a learned vector per cell and content, summed per snake) next to the 83 inputs, same 965k records, held-out | — | accuracy 85.39% → 85.53%, loss 0.4018 → 0.4010: nothing. Not built into the engine |
+| **Blunder set** (`tools/blunders.py`): 305 positions from 105 incidents in arena games against sZoom and _H3R0_, one to three turns before one of our snakes hit a wall or died. Share of positions where the build repeats the move of the game: current build at 6000 iterations; with a cost for a snake without a legal move at the leaf (`EV_TRAP`); **at 60,000 iterations** | 305 × 4 seeds | 89%; 90%; **82%** |
+| On the same set: two-ply worst case against the enemy snakes near (`SAFE` 2); survival of 6 moves with the other bodies fixed (`SAFE_D` 6); both; three and four plies against the nearest enemy | 305 × 4 | 86%; 89%; 86%; 85%; 84% |
+| `SAFE` 3 against the nearest enemy + `SAFE_D` 6 in real-time self-play: counting every loss the enemy can force; counting only what we lose beyond what he pays | 100 each | **−147**; −38 |
+| `SAFE_D` 6 alone, real-time self-play | 200 | −60, +14 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -388,6 +394,42 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   −21, −92. They are good for early news and bad for decisions; the sum is what counts.
 - A sanity check before a submission must look at *our* timeouts ("$0 has not provided"
   when we are first), not at any timeout in the log: the opponent's stopped a submit.
+
+- **Every logged game can be replayed exactly.** The official map generator, seeded the way
+  the CodinGame SDK seeds it (SecureRandom SHA1PRNG, `setSeed`), gives the map of a game
+  from the seed in its log (`tools/mapdump`). With both players' moves from the log,
+  `tools/harvest.py` rebuilt 1,115 of 1,154 arena battles with no turn disagreeing with
+  the score line our bot printed (the rest: one early submission with simulator
+  mismatches, and logs that could not be fetched). Every move the top players made
+  against us is now a position on disk.
+- **Where the body parts go (v1.3–v1.5, per game, `tools/losses.py`).** Head-on collisions
+  are the bulk and are symmetric: 2.0 a game for both sides against the top two, the same
+  number of deaths in them. The difference is the walls: we run into one 0.40 times a
+  game against the top two (they 0.12; we 0.11 against everybody else) and lose a whole
+  snake that way in 12% of those games (they in 1%). A snake only hits a wall when it has
+  no legal move left.
+- **These are not oversights of a shallow search.** On the positions one to three turns
+  before such an incident the current build repeats the move of the game 89% of the
+  time, and with ten times the iterations 82%. The search means it: its model of an enemy
+  snake is our own evaluation (go and eat), and against sZoom and _H3R0_ the enemy does
+  something else.
+- **What the 38 wall incidents were.** Six were dead ends we walked into with nobody's
+  help (a move that kept six legal moves ahead existed and the other was played): a
+  length-11 snake turning into a one-cell pocket its own body then closed. For the other
+  32 the last free choice was fine on the board of that moment and the door was shut
+  afterwards: an enemy snake lying down on top of ours (it rests on us and follows), or
+  parked in a 2×2 loop on the only way out of a pit while ours bled a part a turn.
+- **A worst-case check at the root is the obvious answer and a costly one.** Counting
+  every loss the nearest enemy can force makes our snakes run from every enemy head
+  (−147 Elo in self-play: a head-on costs him a part too). Counting only what we lose
+  beyond what he pays is −38, and moves the blunder set from 89% to 86%. Self-play
+  cannot price this: the opponent there never shuts anyone in. It needs the gate against
+  the real players.
+- **A view of the raw board adds nothing to the net** (85.39% → 85.53% held out). The 83
+  inputs already carry what a 9×9 window around each head shows.
+- **A net that predicts its own games better is not a better net**: n3a, 85.9% on
+  generation 3, played level locally and scored 33.11 in the arena against 33.6–33.7 for
+  n2a.
 
 ## Arena notes
 

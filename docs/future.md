@@ -30,6 +30,22 @@ removing those two first.
   Voronoi, a small evaluation). The difference is in what their evaluation and search
   prefer, which their write-ups do not say.
 
+## Done on the first evening
+
+- A1: exact replay from the seed works; 1,115 battles harvested (`harvest.py`).
+- A4: the losses are classified (`losses.py`); the asymmetry against the top two is walls,
+  i.e. snakes that were shut in.
+- A3 for those positions: a ten times deeper search repeats 82% of the moves. The limit is
+  the model of the opponent, not the depth.
+- C3: board windows add nothing (85.39% → 85.53%). Dropped.
+- A blunder set (`blunders.py`, 305 positions) and two root checks (`SAFE`, `SAFE_D`),
+  which move it from 89% to 84–86% and cost Elo in self-play. Not shipped.
+
+What this changes: **C1 moves to the front, in the form of an opponent model.** The search
+has to expect what sZoom and _H3R0_ actually do with a snake next to ours. Their moves in
+1,115 games are the training set for it; B1 (the paired gate against the real players) is
+the only honest judge and has to exist before anything of this kind is shipped.
+
 ## Pillar A: every real game becomes data (day 1)
 
 Found on 2026-11-17: the official map generator (`GridMaker`), seeded like the CodinGame SDK

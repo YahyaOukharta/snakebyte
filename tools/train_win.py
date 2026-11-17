@@ -92,7 +92,7 @@ for ep in range(a.epochs):
     sched.step()
     net.eval()
     with torch.no_grad():
-        out = torch.cat([net(feat[i:i + 8192], win[i:i + 8192]) for i in range(0, nval, 8192)])
+        out = torch.cat([net(feat[i:min(i + 8192, nval)], win[i:min(i + 8192, nval)]) for i in range(0, nval, 8192)])
         vl = bce(out, Y[:nval]).item()
         r = res[:nval]; dec = r != 0.5
         acc = ((out[dec] > 0) == (r[dec] > 0.5)).float().mean().item()

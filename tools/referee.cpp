@@ -659,6 +659,30 @@ static int traceGame(const char *path, int dumpTurn = -1) {
                 if (S.occ[appleCell[a]] == APPLE && row[a] < bd) bd = row[a], ba = a;
             printf(" 1 %d %d %d %d %d %d", k.len, cx(k.head()), cy(k.head()), ba < 0 ? -1 : cx(appleCell[ba]), ba < 0 ? -1 : cy(appleCell[ba]), bd);
         }
+        if (dumpTurn < 0 && getenv("SB_SURV")) {                         // per snake "legalMask/survivingMask" (depth SB_SURV, others fixed)
+            printf(" | S");
+            for (int i = 0; i < n; i++) {
+                if (!S.s[i].alive) { printf(" 0/0"); continue; }
+                int rm = rawMask(S, i), ok = 0;
+                State A = S;
+                for (int j = 0; j < NS; j++) {
+                    if (j == i || !A.s[j].alive) continue;
+                    for (int q = 0; q < A.s[j].len; q++) A.occ[A.s[j].part(q)] = WALL;
+                    A.s[j].alive = 0;
+                }
+                A.recount();
+                for (int d = 0; d < 4; d++) {
+                    if (!(rm >> d & 1)) continue;
+                    State T2 = A;
+                    int8_t m[MAXS] = {0, 0, 0, 0, 0, 0, 0, 0};
+                    m[i] = d;
+                    T2.step(m);
+                    surviveNodes = 0;
+                    if (T2.s[i].alive && survives(T2, i, atoi(getenv("SB_SURV")))) ok |= 1 << d;
+                }
+                printf(" %d/%d", rm, ok);
+            }
+        }
         if (dumpTurn < 0) printf(" |%s\n", eaten.c_str());
         if (t >= T || S.terminal()) break;
         int8_t mv[MAXS];
@@ -672,7 +696,36 @@ static int traceGame(const char *path, int dumpTurn = -1) {
                 if (S.occ[c] == APPLE) eaten += " " + to_string(i) + ":" + to_string(cx(c)) + "," + to_string(cy(c));
             }
         }
+        // what each snake runs into this turn, written after the apples as "!snake:cause:other:lengthBefore"
+        // causes: W wall, S own body, B body of snake `other`, H head-on with `other`, F fell out
+        int lenB[MAXS], nhd[MAXS];
+        bool aliveB[MAXS];
+        string hits;
+        for (int i = 0; i < n; i++) {
+            aliveB[i] = S.s[i].alive, lenB[i] = S.s[i].len;
+            nhd[i] = aliveB[i] ? S.s[i].head() + DELTA[mv[i]] : -1;
+        }
+        for (int i = 0; i < n; i++) {
+            if (!aliveB[i]) continue;
+            int c = nhd[i], other = -1;
+            char cause = 0;
+            for (int j = 0; j < n; j++)
+                if (j != i && aliveB[j] && nhd[j] == c) cause = 'H', other = j;
+            if (!cause) {
+                uint8_t v = S.occ[c];
+                if (v == WALL || v == VOID) cause = 'W';
+                else if (v >= SNAKE) {
+                    int j = v - SNAKE;
+                    bool tailMoves = S.s[j].tail() == c && S.occ[nhd[j]] != APPLE;
+                    if (!tailMoves) cause = j == i ? 'S' : 'B', other = j;
+                }
+            }
+            if (cause) hits += " !" + to_string(i) + ":" + cause + ":" + to_string(other) + ":" + to_string(lenB[i]);
+        }
         S.step(mv);
+        for (int i = 0; i < n; i++)
+            if (aliveB[i] && !S.s[i].alive && hits.find(" !" + to_string(i) + ":") == string::npos) hits += " !" + to_string(i) + ":F:-1:" + to_string(lenB[i]);
+        eaten += hits;
     }
     return 0;
 }
