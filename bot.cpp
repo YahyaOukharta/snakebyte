@@ -21,9 +21,9 @@ using namespace std;
 
 // ───────────────────────────── board geometry ─────────────────────────────
 // The real grid is at most 44x24. Snakes may leave it (the outside is empty space, not wall),
-// so the model adds a margin: 10 columns on each side, 8 rows above, 15+ below.
+// so the model adds a margin: 10 columns on each side, 20 rows above, 19+ below.
 // Cell index = (y + OY) * 64 + (x + OX). The outer ring of the model is VOID.
-enum { STRIDE = 64, ROWS = 48, CELLS = STRIDE * ROWS, OX = 10, OY = 8 };
+enum { STRIDE = 64, ROWS = 64, CELLS = STRIDE * ROWS, OX = 10, OY = 20 };
 enum : uint8_t { EMPTY = 0, APPLE = 1, WALL = 2, VOID = 3, SNAKE = 4 };   // SNAKE + index
 enum { MAXS = 8, CAP = 128, MAXA = 128 };
 static const int DELTA[4] = {-STRIDE, 1, STRIDE, -1};                      // UP RIGHT DOWN LEFT
@@ -331,6 +331,8 @@ PARAM(POL_EPS, 8);       // one first visit in POL_EPS ignores that order
 PARAM(REUSE, 0);         // tree reuse: share of last turn's statistics kept under the moves played (0 = off)
 PARAM(EV_GLOB, 1.0);     // weight of the shared value in a snake's own tree
 PARAM(EV_OWNS, 0);       // credit to the snake that is nearest to an apple its side owns
+PARAM(NET_A, 4.0);       // with a net: raw = NET_MIX * handcrafted + NET_A * logit of the net
+PARAM(NET_MIX, 0);
 PARAM(EV_MEAN, 0.5);     // share of the mean length difference along the line (eat sooner)
 PARAM(D_BASE, 3);        // depth = D_BASE + iterations / D_STEP1 until D_SW iterations ...
 PARAM(D_STEP1, 250);
@@ -365,55 +367,195 @@ static void bfsApple(int a) {
     }
 }
 
-// Gravity-aware distances. After every turn some part of a snake rests on something, so
-// its head is never more than (length - 1) cells of free path away from a supported cell
-// (a free cell with a wall or an apple below). hsup[c] = that path distance for cell c.
-// A snake of length b can only have its head on cells with hsup <= b - 1, so
-// gdist[a][b-1][c] = BFS distance from c to apple a through such cells only, 255 if none.
-enum { BMAX = 16 };
-static uint8_t gdist[MAXA][BMAX][CELLS];
-static uint8_t hsup[CELLS];
+// Gravity-aware distances.
+// The body of a snake lies on the last cells of its head's path, so the snake holds only
+// while one of those cells is supported (a wall or an apple below it). Along a path, "run"
+// counts the cells entered since the last supported one; a snake of length L holds while
+// run <= L - 1. The search state is (cell, run):
+//   step into a supported cell        -> run 0
+//   step down                         -> run unchanged (hanging or falling: both go down)
+//   step sideways or up               -> run + 1, allowed while <= L - 1
+//   sideways at run L - 1             -> the snake drops one row: it ends on the cell below
+//   step into the apple               -> always allowed: it is eaten before the fall, and the
+//                                        new part keeps the tail where it was
+// gd[apple][L][run][cell] = moves from (cell, run) to the apple for a snake of length L
+// (3..12, longer snakes use 12), 255 if it cannot get there. Backward BFS from the apple.
+enum { LMIN = 3, LMAX = 12, NL = LMAX - LMIN + 1 };
+static uint8_t *gd;
+static uint8_t supc[CELLS];      // cell is free and has a wall or a first-turn apple below
+static inline uint8_t *GD(int a, int l, int r) { return gd + (((size_t)a * NL + l) * LMAX + r) * CELLS; }
 
 static void bfsSupport(const uint8_t *occ0) {
-    static uint16_t q[CELLS];
-    memset(hsup, 255, CELLS);
-    int qh = 0, qt = 0;
-    for (int c = STRIDE; c < CELLS - STRIDE; c++)
-        if (baseOcc[c] < WALL && (baseOcc[c + STRIDE] == WALL || occ0[c + STRIDE] == APPLE)) hsup[c] = 0, q[qt++] = c;
-    while (qh < qt) {
-        int c = q[qh++];
-        for (int k = 0; k < 4; k++) {
-            int n = c + DELTA[k];
-            if (baseOcc[n] >= WALL || hsup[n] != 255) continue;
-            hsup[n] = hsup[c] + 1;
-            q[qt++] = n;
-        }
-    }
+    for (int c = 0; c < CELLS; c++)
+        supc[c] = c + STRIDE < CELLS && baseOcc[c] < WALL && (baseOcc[c + STRIDE] == WALL || occ0[c + STRIDE] == APPLE);
 }
 
 static void bfsGravity(int a) {
-    static uint16_t q[CELLS];
-    for (int b = 1; b <= BMAX; b++) {
-        uint8_t *d = gdist[a][b - 1];
-        memset(d, 255, CELLS);
-        if (hsup[appleCell[a]] > b - 1) continue;
+    static uint32_t q[CELLS * LMAX];
+    const int A = appleCell[a];
+    for (int l = 0; l < NL; l++) {
+        const int L = l + LMIN;
+        uint8_t *D = GD(a, l, 0);                    // D[r * CELLS + c]
+        memset(D, 255, (size_t)LMAX * CELLS);
         int qh = 0, qt = 0;
-        q[qt++] = appleCell[a];
-        d[appleCell[a]] = 0;
+        for (int r = 0; r < L; r++) D[r * CELLS + A] = 0;
+        for (int k = 0; k < 4; k++) {
+            int c = A - DELTA[k];
+            if (baseOcc[c] >= WALL) continue;
+            for (int r = 0; r < L; r++)
+                if (D[r * CELLS + c] == 255) D[r * CELLS + c] = 1, q[qt++] = c << 4 | r;
+        }
         while (qh < qt) {
-            int c = q[qh++];
-            if (d[c] >= 250) continue;
-            for (int k = 0; k < 4; k++) {
-                int n = c + DELTA[k];
-                if (baseOcc[n] >= WALL || d[n] != 255 || hsup[n] > b - 1) continue;
-                d[n] = d[c] + 1;
-                q[qt++] = n;
+            int n = q[qh] >> 4, r = q[qh] & 15;
+            qh++;
+            int d = D[r * CELLS + n];
+            if (d >= 250) continue;
+            bool sn = supc[n];
+            if (sn && r) continue;                   // a supported cell is only ever entered with run 0
+            auto relax = [&](int c, int rr) {
+                uint8_t &x = D[rr * CELLS + c];
+                if (x == 255) x = d + 1, q[qt++] = c << 4 | rr;
+            };
+            for (int k = 0; k < 4; k++) {            // predecessors c with the move c -> n in direction k
+                int c = n - DELTA[k];
+                if (baseOcc[c] >= WALL || c == A) continue;
+                if (sn) { for (int rr = 0; rr < L; rr++) relax(c, rr); }
+                else if (k == 2) relax(c, r);
+                else if (r >= 1) relax(c, r - 1);
+            }
+            if (sn || r == L - 1) {                  // arrived here by dropping one row after a sideways step
+                int m = n - STRIDE;
+                if (baseOcc[m] < WALL && !supc[m] && m != A) {
+                    if (baseOcc[m - 1] < WALL && m - 1 != A) relax(m - 1, L - 1);
+                    if (baseOcc[m + 1] < WALL && m + 1 != A) relax(m + 1, L - 1);
+                }
             }
         }
     }
 }
 
-static inline int budget(const State &S, int i) { return S.s[i].len > BMAX ? BMAX : S.s[i].len; }
+// Where snake i is in the tables: length index and current run (parts in front of its first
+// supported part; a snake resting only on other snakes counts as fully stretched).
+static inline void reachIdx(const State &S, int i, int &l, int &r) {
+    const Snake &k = S.s[i];
+    int L = k.len < LMIN ? LMIN : k.len > LMAX ? LMAX : k.len;
+    l = L - LMIN;
+    int j = 0;
+    for (; j < k.len && j < L - 1; j++) {
+        uint8_t v = S.occ[k.part(j) + STRIDE];
+        if (v == WALL || v == APPLE) break;
+    }
+    r = j;
+}
+
+// All distance tables for a new game, from its first position.
+static void initDistances(const State &S) {
+    nApple0 = 0;
+    for (int c = 0; c < CELLS && nApple0 < MAXA; c++)
+        if (S.occ[c] == APPLE) appleCell[nApple0++] = c;
+    bfsSupport(S.occ);
+    free(gd);
+    gd = (uint8_t *)malloc((size_t)nApple0 * NL * LMAX * CELLS);
+    for (int a = 0; a < nApple0; a++) bfsApple(a), bfsGravity(a);
+}
+
+// ───────────────────────────── value net ─────────────────────────────
+// Inputs: 16 numbers about the game and 7 per snake (4 slots per side, longest first), all
+// from the point of view of player p. One hidden pair of layers, ReLU, one output: the
+// logit of "p wins".
+enum { NF_G = 16, NF_S = 7, NF = NF_G + 8 * NF_S, NH1 = 96, NH2 = 32 };
+
+static void features(const State &S, int p, float *f) {
+    memset(f, 0, sizeof(float) * NF);
+    int d1[MAXS], d2[MAXS], own[MAXS], rl[MAXS], rr[MAXS];
+    for (int i = 0; i < NS; i++) {
+        d1[i] = d2[i] = 255, own[i] = 0, rl[i] = rr[i] = 0;
+        if (S.s[i].alive) reachIdx(S, i, rl[i], rr[i]);
+    }
+    int owned[2] = {0, 0}, contested = 0, unreach = 0;
+    float prox[2] = {0, 0};
+    for (int a = 0; a < nApple0; a++) {
+        if (S.occ[appleCell[a]] != APPLE) continue;
+        int m[2] = {255, 255}, im[2] = {0, 0};
+        for (int i = 0; i < NS; i++) {
+            if (!S.s[i].alive) continue;
+            int v = GD(a, rl[i], rr[i])[S.s[i].head()];
+            if (v < d1[i]) d2[i] = d1[i], d1[i] = v;
+            else if (v < d2[i]) d2[i] = v;
+            int o = OWNER[i];
+            if (v < m[o]) m[o] = v, im[o] = i;
+        }
+        if (m[0] == 255 && m[1] == 255) unreach++;
+        else if (m[0] == m[1]) contested++;
+        else {
+            int o = m[0] < m[1] ? 0 : 1;
+            owned[o]++, own[im[o]]++, prox[o] += 1.0f / (1 + m[o]);
+        }
+    }
+    int q = 1 - p;
+    f[0] = S.turn / 200.0f;
+    f[1] = S.napples / 32.0f;
+    f[2] = (S.len[p] - S.len[q]) / 16.0f;
+    f[3] = S.len[p] / 32.0f, f[4] = S.len[q] / 32.0f;
+    f[5] = S.losses[p] / 8.0f, f[6] = S.losses[q] / 8.0f;
+    f[7] = S.alive[p] / 4.0f, f[8] = S.alive[q] / 4.0f;
+    f[9] = owned[p] / 16.0f, f[10] = owned[q] / 16.0f;
+    f[11] = contested / 16.0f, f[12] = unreach / 16.0f;
+    f[13] = H / 24.0f;
+    f[14] = prox[p] / 8.0f, f[15] = prox[q] / 8.0f;
+    int per = NS / 2;
+    for (int side = 0; side < 2; side++) {
+        int o = side == 0 ? p : q, idx[4], n = 0;
+        for (int k = 0; k < per; k++)
+            if (S.s[o * per + k].alive) idx[n++] = o * per + k;
+        for (int a = 1; a < n; a++)                           // longest first
+            for (int b = a; b > 0 && S.s[idx[b]].len > S.s[idx[b - 1]].len; b--) swap(idx[b], idx[b - 1]);
+        for (int k = 0; k < n; k++) {
+            float *g = f + NF_G + (side * 4 + k) * NF_S;
+            int i = idx[k];
+            g[0] = 1;
+            g[1] = S.s[i].len / 16.0f;
+            g[2] = (d1[i] > 32 ? 32 : d1[i]) / 32.0f;
+            g[3] = (d2[i] > 32 ? 32 : d2[i]) / 32.0f;
+            g[4] = d1[i] != 255;
+            g[5] = (H - cy(S.s[i].head())) / 24.0f;
+            g[6] = own[i] / 8.0f;
+        }
+    }
+}
+
+static float NW1[NH1][NF], NB1[NH1], NW2[NH2][NH1], NB2[NH2], NW3[NH2], NB3;
+static bool netLoaded = false;
+
+static float netForward(const float *f) {
+    float h1[NH1], h2[NH2];
+    for (int j = 0; j < NH1; j++) {
+        float a = NB1[j];
+        const float *w = NW1[j];
+        for (int k = 0; k < NF; k++) a += w[k] * f[k];
+        h1[j] = a > 0 ? a : 0;
+    }
+    for (int j = 0; j < NH2; j++) {
+        float a = NB2[j];
+        const float *w = NW2[j];
+        for (int k = 0; k < NH1; k++) a += w[k] * h1[k];
+        h2[j] = a > 0 ? a : 0;
+    }
+    float o = NB3;
+    for (int k = 0; k < NH2; k++) o += NW3[k] * h2[k];
+    return o;
+}
+#ifdef LOCAL
+static void loadNet(const char *path) {                      // raw float32: W1 b1 W2 b2 W3 b3
+    FILE *fp = fopen(path, "rb");
+    if (!fp) { fprintf(stderr, "no net %s\n", path); exit(1); }
+    size_t n = fread(NW1, 4, NH1 * NF, fp) + fread(NB1, 4, NH1, fp) + fread(NW2, 4, NH2 * NH1, fp) + fread(NB2, 4, NH2, fp) +
+               fread(NW3, 4, NH2, fp) + fread(&NB3, 4, 1, fp);
+    fclose(fp);
+    if (n != NH1 * NF + NH1 + NH2 * NH1 + NH2 + NH2 + 1) { fprintf(stderr, "bad net %s\n", path); exit(1); }
+    netLoaded = true;
+}
+#endif
 
 // ───────────────────────────── evaluation ─────────────────────────────
 // From player 0's (my) point of view, in (-1, 1).
@@ -432,11 +574,11 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
         for (int i = 0; i < NS; i++) own[i] = S.s[i].alive ? S.s[i].len - root.s[i].len : -(double)root.s[i].len;
         return raw;
     }
-    int best[MAXS], bud[MAXS], ownA[MAXS] = {0};
+    int best[MAXS], rl[MAXS], rr[MAXS], ownA[MAXS] = {0};
     const bool grav = EV_GRAV != 0;
     for (int i = 0; i < NS; i++) {
         best[i] = 255;
-        if (grav && S.s[i].alive) bud[i] = budget(S, i) - 1;
+        if (grav && S.s[i].alive) reachIdx(S, i, rl[i], rr[i]);
     }
     for (int a = 0; a < nApple0; a++) {
         if (S.occ[appleCell[a]] != APPLE) continue;
@@ -446,7 +588,7 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
             if (!S.s[i].alive) continue;
             int hd = S.s[i].head(), v = d[hd];
             if (grav) {
-                v = gdist[a][bud[i]][hd];                    // 255: out of reach for this length
+                v = GD(a, rl[i], rr[i])[hd];                 // 255: out of reach for this snake
             }
             if (v < best[i]) best[i] = v;
             if (OWNER[i] == 0) { if (v < m0) m0 = v, i0 = i; }
@@ -468,6 +610,11 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
     }
     for (int i = 0; i < NS; i++)
         if (!S.s[i].alive) own[i] = -(double)root.s[i].len;
+    if (netLoaded && NET_A != 0) {                           // the net replaces the shared value; own[] stays
+        float f[NF];
+        features(S, 0, f);
+        return NET_MIX * raw + NET_A * netForward(f);
+    }
     return raw;
 }
 
@@ -572,6 +719,7 @@ static int copyTree(int o, float f) {
 }
 
 static int lastIters, lastDepth, lastSims;
+static double lastScore;         // mean shared value of the last search, player 0's view, in (-1, 1)
 static long fixedIters = 0;      // LOCAL: iterations per move instead of time
 
 // Returns the chosen direction per snake in out[] (all snakes, opponents included).
@@ -597,15 +745,17 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
     int iters = 0, depth = (int)D_BASE;
     int rootDiff = root.len[0] - root.len[1];
     int sims = 0;
+    double scoreSum = 0;
     for (int i = 0; i < NS; i++) {
         if (!root.s[i].alive) continue;
         uint8_t *F = nearF[i];
         memset(F, POL != 0 ? 255 : 0, CELLS);
         if (POL == 0) continue;
-        int b = budget(root, i) - 1;
+        int l, r;
+        reachIdx(root, i, l, r);
         for (int a = 0; a < nApple0; a++) {
             if (root.occ[appleCell[a]] != APPLE) continue;
-            const uint8_t *g = gdist[a][b];
+            const uint8_t *g = GD(a, l, 0);
             for (int c = 0; c < CELLS; c++) F[c] = g[c] < F[c] ? g[c] : F[c];
         }
     }
@@ -649,6 +799,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         }
         double own[MAXS];
         double raw = evaluate(S, d ? rootDiff + sum / d : rootDiff, root, own);
+        scoreSum += squash(raw / EV_K);
         float val[MAXS];                                     // value for each snake's tree, player 0's view
         for (int i = 0; i < NS; i++)
             val[i] = squash((EV_GLOB * raw + (OWNER[i] == 0 ? EV_SELF : -EV_SELF) * own[i]) / EV_K);
@@ -674,6 +825,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         out[i] = best;
     }
     lastIters = iters, lastDepth = depth, lastSims = sims;
+    lastScore = iters ? scoreSum / iters : 0;
     memcpy(keptRoots, roots, sizeof roots), haveTrees = true;
 }
 
@@ -758,6 +910,7 @@ int main() {
 #ifdef LOCAL
     if (getenv("SB_ITERS")) fixedIters = atol(getenv("SB_ITERS"));
     if (getenv("SB_SEED")) rngS ^= strtoull(getenv("SB_SEED"), 0, 10) * 0x2545F4914F6CDD1DULL;
+    if (getenv("SB_NET")) loadNet(getenv("SB_NET"));
 #endif
     cur.losses[0] = cur.losses[1] = 0;
     for (;;) {
@@ -775,13 +928,6 @@ int main() {
             if (!inModel(ax[i], ay[i])) continue;
             cur.occ[cellOf(ax[i], ay[i])] = APPLE;
             cur.napples++;
-        }
-        if (turnNo == 0) {
-            nApple0 = 0;
-            for (int i = 0; i < na && nApple0 < MAXA; i++)
-                if (inModel(ax[i], ay[i])) appleCell[nApple0++] = cellOf(ax[i], ay[i]);
-            bfsSupport(cur.occ);
-            for (int a = 0; a < nApple0; a++) bfsApple(a), bfsGravity(a);
         }
         for (int i = 0; i < NS; i++) cur.s[i].alive = 0, cur.s[i].len = 0, cur.s[i].h = 0;
         int ns;
@@ -814,6 +960,7 @@ int main() {
             }
         }
         cur.recount();
+        if (turnNo == 0) initDistances(cur);
         bool synced = true;
         if (havePrev) {
             synced = resync();
@@ -864,8 +1011,33 @@ int main() {
         double ms = chrono::duration<double, milli>(chrono::steady_clock::now() - t0).count();
         fprintf(stderr, "t%d it %d d %d sims %d nodes %d %.1fms desync %d L %d/%d score %d-%d apples %d\n", turnNo, lastIters,
                 lastDepth, lastSims, poolN, ms, desyncs, cur.losses[0], cur.losses[1], cur.len[0], cur.len[1], cur.napples);
-#ifdef DUMP                                                  // board every DUMP turns: my snakes A-D (head) a-d, theirs W-Z w-z
-        if (turnNo % DUMP == 0)
+#ifdef DUMP                                                  // board every DUMP turns, and whenever a snake died or the simulator disagreed
+        static int liveBefore = -1;
+        int liveNow = cur.alive[0] + cur.alive[1];
+        bool event = (liveBefore >= 0 && liveNow < liveBefore) || strstr(outp.c_str(), " DS");
+        liveBefore = liveNow;
+        if (event) {
+            fprintf(stderr, "EVENT prev turn moves:");
+            for (int i = 0; i < NS; i++) fprintf(stderr, " %d:%s%s", CGID[i], prevS.s[i].alive ? DNAME[playedMv[i]] : "-", OWNER[i] ? "'" : "");
+            fprintf(stderr, "\n");
+            for (int i = 0; i < NS; i++) {
+                if (!prevS.s[i].alive) continue;
+                fprintf(stderr, " prev %d%s len %d:", CGID[i], OWNER[i] ? "'" : "", prevS.s[i].len);
+                for (int j = 0; j < prevS.s[i].len && j < 12; j++) fprintf(stderr, " %d,%d", cx(prevS.s[i].part(j)), cy(prevS.s[i].part(j)));
+                fprintf(stderr, "\n");
+            }
+        }
+        if (turnNo % DUMP == 0 || event)
+            for (int i = 0; i < NS; i++) {                   // nearest apple each snake can reach, and how far
+                if (!cur.s[i].alive) continue;
+                int bd = 255, ba = -1, l, r;
+                reachIdx(cur, i, l, r);
+                for (int a = 0; a < nApple0; a++)
+                    if (cur.occ[appleCell[a]] == APPLE && GD(a, l, r)[cur.s[i].head()] < bd) bd = GD(a, l, r)[cur.s[i].head()], ba = a;
+                fprintf(stderr, " snake %d%s len %d head %d,%d run %d -> apple %d,%d dist %d\n", CGID[i], OWNER[i] ? "'" : "", cur.s[i].len,
+                        cx(cur.s[i].head()), cy(cur.s[i].head()), r, ba < 0 ? -1 : cx(appleCell[ba]), ba < 0 ? -1 : cy(appleCell[ba]), bd);
+            }
+        if (turnNo % DUMP == 0 || event)
             for (int y = -2; y < H; y++) {
                 char row[80];
                 for (int x = -2; x < W + 2; x++) {

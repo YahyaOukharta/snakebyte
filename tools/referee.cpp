@@ -6,6 +6,9 @@
 //   referee A B [-g MAPS] [-j JOBS] [-n ITERS] [-s SEED] [-l LEAGUE] [-v]
 //   A and B are binaries, optionally with parameters: build/bot@SB_UCB_C=0.5,SB_EV_OWN=0.3
 //   referee --map SEED          print one map
+//   referee --gen GAMES ITERS SEED OUT [EPS]    self-play records for training
+//   referee --export OUT IN...                  records -> features and labels
+//   referee --evalcheck NET RECORDS N           net output of the engine on the first N records
 // Every map is played twice with the seats swapped. -n sets SB_ITERS for both bots
 // (fixed iterations per move); without it the bots use their own clock.
 #define SB_NO_MAIN
@@ -318,11 +321,11 @@ struct Result {
     int winner;          // 0, 1 or -1 (draw)
 };
 
-static Result playGame(const Map &m, const char *bot0, const char *bot1, long iters, uint64_t seed, bool verbose) {
+// Sets the engine's globals for this map and builds the first position.
+static void setupGame(const Map &m, State &S) {
     W = m.w, H = m.h, LIMY = H + 1 + OY;
     int per = (int)m.spawns.size();
     NS = per * 2;
-    State S;
     memset(S.occ, EMPTY, CELLS);
     for (int c = 0; c < CELLS; c++) {
         int x = c & 63, y = c >> 6;
@@ -330,6 +333,7 @@ static Result playGame(const Map &m, const char *bot0, const char *bot1, long it
     }
     for (int c = 0; c < m.w * m.h; c++)
         if (m.wall[c]) S.occ[cellOf(c % m.w, c / m.w)] = WALL;
+    memcpy(baseOcc, S.occ, CELLS);
     S.napples = (int)m.apples.size();
     for (int a : m.apples) S.occ[cellOf(a % m.w, a / m.w)] = APPLE;
     for (int p = 0; p < 2; p++)
@@ -346,6 +350,108 @@ static Result playGame(const Map &m, const char *bot0, const char *bot1, long it
         }
     S.turn = 0, S.losses[0] = S.losses[1] = 0;
     S.recount();
+}
+
+static int winnerOf(const State &S) {            // 0, 1 or -1, by score then losses
+    int a = S.len[0], b = S.len[1];
+    if (a == b) a -= S.losses[0], b -= S.losses[1];
+    return a > b ? 0 : b > a ? 1 : -1;
+}
+
+// ───────────────────────────── self-play records (training data) ─────────────────────────────
+// --gen GAMES ITERS SEED OUT [EPS]: self-play in this process. One search per turn gives the
+// move of all eight snakes; each snake plays a random valid move instead with probability EPS.
+// A game is stored as seed + moves (it is deterministic), so features can be recomputed later:
+//   file: "SBG2", then per game: uint64 seed, uint16 turns, turns x 8 bytes (direction per
+//   snake), turns x int16 (search score x 10000, player 0's view). Files without the magic
+//   are the first format: no scores.
+static void genGames(int games, long iters, uint64_t seed, const char *out, double eps) {
+    FILE *fp = fopen(out, "wb");
+    fwrite("SBG2", 1, 4, fp);
+    initSearch();
+    if (getenv("SB_NET")) loadNet(getenv("SB_NET"));
+    fixedIters = iters;
+    Rng r(seed ^ 0xABCDEF);
+    for (int g = 0; g < games; g++) {
+        uint64_t ms = seed + g;
+        Map m = makeMap(ms, 4);
+        if (m.spawns.empty()) continue;
+        State S;
+        setupGame(m, S);
+        initDistances(S);
+        haveTrees = false;
+        static int8_t rec[200][MAXS];
+        static int16_t sc[200];
+        while (!S.terminal()) {
+            int8_t mv[MAXS];
+            search(S, 0, mv);
+            sc[S.turn] = (int16_t)(lastScore * 10000);
+            for (int i = 0; i < NS; i++)
+                if (S.s[i].alive && r.dbl() < eps) {
+                    int mask = validMask(S, i), d;
+                    do d = r.below(4); while (!(mask >> d & 1));
+                    mv[i] = d;
+                }
+            memcpy(rec[S.turn], mv, MAXS);
+            S.step(mv);
+        }
+        uint16_t t = S.turn;
+        fwrite(&ms, 8, 1, fp), fwrite(&t, 2, 1, fp), fwrite(rec, MAXS, t, fp), fwrite(sc, 2, t, fp);
+        fflush(fp);
+    }
+    fclose(fp);
+}
+
+// --export OUT IN...: replays recorded games and writes, for every position and both points
+// of view, NF float features + result (1 / 0.5 / 0) + final score difference / 16 + the
+// search score in (-1, 1) (0 when the file has none).
+static void exportGames(const char *out, int nin, char **in) {
+    FILE *fo = fopen(out, "wb");
+    long pos = 0, games = 0;
+    uint64_t keep = getenv("SB_KEEP") ? atol(getenv("SB_KEEP")) : 1;
+    for (int k = 0; k < nin; k++) {
+        FILE *fp = fopen(in[k], "rb");
+        if (!fp) continue;
+        uint64_t ms;
+        uint16_t t;
+        static int8_t rec[200][MAXS];
+        static int16_t sc[200];
+        char magic[4];
+        bool v2 = fread(magic, 1, 4, fp) == 4 && !memcmp(magic, "SBG2", 4);
+        if (!v2) rewind(fp);
+        memset(sc, 0, sizeof sc);
+        while (fread(&ms, 8, 1, fp) == 1 && fread(&t, 2, 1, fp) == 1 && fread(rec, MAXS, t, fp) == t &&
+               (!v2 || fread(sc, 2, t, fp) == t)) {
+            Map m = makeMap(ms, 4);
+            State S;
+            setupGame(m, S);
+            initDistances(S);
+            static State hist[200];
+            for (int i = 0; i < t; i++) hist[i] = S, S.step(rec[i]);
+            int w = winnerOf(S);
+            for (int i = 0; i < t; i++) {
+                if (keep > 1 && (ms * 31 + i) % keep) continue;     // SB_KEEP=k: one position in k
+                for (int p = 0; p < 2; p++) {
+                    float f[NF + 3];
+                    features(hist[i], p, f);
+                    f[NF] = w < 0 ? 0.5f : w == p ? 1.0f : 0.0f;
+                    f[NF + 1] = (S.len[p] - S.len[1 - p]) / 16.0f;
+                    f[NF + 2] = (p ? -sc[i] : sc[i]) / 10000.0f;
+                    fwrite(f, sizeof f, 1, fo), pos++;
+                }
+            }
+            games++;
+        }
+        fclose(fp);
+    }
+    fclose(fo);
+    fprintf(stderr, "%ld games, %ld records of %d floats\n", games, pos, NF + 3);
+}
+
+static Result playGame(const Map &m, const char *bot0, const char *bot1, long iters, uint64_t seed, bool verbose) {
+    int per = (int)m.spawns.size();
+    State S;
+    setupGame(m, S);
 
     Proc pr[2];
     pr[0].start(bot0, iters, seed * 2 + 1, verbose);
@@ -461,6 +567,21 @@ int main(int argc, char **argv) {
                 }
                 putchar('\n');
             }
+        return 0;
+    }
+    if (argc >= 6 && !strcmp(argv[1], "--gen")) {
+        genGames(atoi(argv[2]), atol(argv[3]), strtoull(argv[4], 0, 10), argv[5], argc > 6 ? atof(argv[6]) : 0.05);
+        return 0;
+    }
+    if (argc >= 5 && !strcmp(argv[1], "--evalcheck")) {      // NET RECORDS N: the engine's output on the first N records
+        loadNet(argv[2]);
+        FILE *fp = fopen(argv[3], "rb");
+        float f[NF + 3];
+        for (int i = 0, n = atoi(argv[4]); i < n && fread(f, sizeof f, 1, fp) == 1; i++) printf("%.6f\n", netForward(f));
+        return 0;
+    }
+    if (argc >= 4 && !strcmp(argv[1], "--export")) {
+        exportGames(argv[2], argc - 3, argv + 3);
         return 0;
     }
     if (argc < 3) {

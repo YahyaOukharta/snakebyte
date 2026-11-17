@@ -2,3 +2,6 @@
 {"a": "v1.0", "b": "legacy", "wins": 73, "losses": 7, "draws": 0, "score": 91.2, "elo": 407, "err": 165, "first_seat": 49, "faults": [0, 59], "iters": 0, "seed": 500, "time": 1794868600, "note": "games legacy finished: +14 -7"}
 {"a": "build/bot", "b": "v1.0", "wins": 88, "losses": 10, "draws": 2, "score": 89.0, "elo": 363, "err": 117, "first_seat": 52, "faults": [0, 0], "iters": 1000, "seed": 9000, "time": 1794869343}
 {"a": "build/bot", "b": "v1.0", "wins": 88, "losses": 8, "draws": 4, "score": 90.0, "elo": 382, "err": 119, "first_seat": 52, "faults": [0, 0], "iters": 0, "seed": 9100, "time": 1794869490}
+{"a": "build/bot", "b": "v1.1", "wins": 38, "losses": 35, "draws": 27, "score": 51.5, "elo": 10, "err": 59, "first_seat": 48, "faults": [0, 0], "iters": 0, "seed": 25000, "time": 1794875398}
+{"a": "build/bot", "b": "v1.1", "wins": 49, "losses": 30, "draws": 21, "score": 59.5, "elo": 67, "err": 62, "first_seat": 44, "faults": [0, 0], "iters": 3000, "seed": 26100, "time": 1794876103}
+{"a": "build/bot", "b": "v1.1", "wins": 38, "losses": 42, "draws": 20, "score": 48.0, "elo": -14, "err": 62, "first_seat": 58, "faults": [0, 0], "iters": 3000, "seed": 26000, "time": 1794876111}
