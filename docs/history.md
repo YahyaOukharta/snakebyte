@@ -79,6 +79,8 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Unreachable gradient again, now with walls-only tables (`EV_UG` 0.005 / 0.02), handcrafted only | 100 each, 2000 it | 0 / −78 |
 | Net n2a on inputs v2 (83: + Voronoi apples per side, soft ownership, reachable apples per snake; 4.0M records of the generation 1–2 games re-exported with walls-only tables; held-out accuracy 81.1%) vs v1.3 | 200 at 3000 it + 100 real time | +42, +10; +3 (pooled +18 ± 37) |
 | n2b: the same with 40% search score in the target; n2a with net weight 3.2 | 100 each, 3000 it | +31; 0 |
+| n2a packed (out/v14.cpp) vs v1.3, **real time on Kaggle**, both accounts | 4 × 200 | +33, +28, +10, +14: pooled **+21 ± 22**; with the 300 local games about +20 ± 19 |
+| Banked apples (`EV_BANK`): an apple I reach 6 moves before the opponent, or alone, counts 0.3 / 0.6; 0.3 with a margin of 3 | 100 each, 3000 it | 0 / **−200**; −63: the snakes postpone eating what is "theirs anyway" |
 
 ## What was learned
 
