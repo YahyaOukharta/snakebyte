@@ -115,12 +115,23 @@ svg .mut { fill: var(--muted); }
     <li><a href="#search">Search: Smitsimax</a></li>
     <li class="sub"><a href="#select">Selection</a></li>
     <li class="sub"><a href="#loop">The loop</a></li>
-    <li><a href="#eval">Evaluation</a></li>
-    <li class="sub"><a href="#gravity">Gravity distances</a></li>
     <li class="sub"><a href="#credit">Per-snake credit</a></li>
+    <li><a href="#eval">Evaluation</a></li>
+    <li class="sub"><a href="#gravity">Reach tables</a></li>
+    <li class="sub"><a href="#scan">The apple scan</a></li>
+    <li class="sub"><a href="#voronoi">Voronoi territory</a></li>
+    <li><a href="#net">Value net</a></li>
+    <li class="sub"><a href="#net-in">Inputs</a></li>
+    <li class="sub"><a href="#net-fwd">Forward pass</a></li>
+    <li class="sub"><a href="#net-train">Data and training</a></li>
+    <li class="sub"><a href="#net-pack">Packing</a></li>
+    <li><a href="#tuning">Tuning: SPSA</a></li>
     <li><a href="#protocol">Protocol and resync</a></li>
     <li><a href="#speed">Speed</a></li>
     <li><a href="#tools">Local tools</a></li>
+    <li><a href="#workflow">Measuring a change</a></li>
+    <li><a href="#faults">Finding faults</a></li>
+    <li><a href="#versions">Versions</a></li>
     <li><a href="#failed">What did not work</a></li>
     <li><a href="#reference">Function reference</a></li>
   </ol>
@@ -128,37 +139,40 @@ svg .mut { fill: var(--muted); }
 <main>
 <header class="top">
   <h1>How the SnakeByte bot works, piece by piece</h1>
-  <p class="lede">A walk through <code>bot.cpp</code> as of v1.1: the simulator, the search, the evaluation and the tricks that make each one fast, with the numbers measured along the way.</p>
+  <p class="lede">A walk through <code>bot.cpp</code> and its tools as of v1.3: the simulator, the search, the evaluation, the value net, the tuning and the way every change is measured, with the numbers found along the way.</p>
 </header>
 
 <section id="overview">
 <div class="stats">
-  <div class="stat"><b>328 → 18</b><span>Legend rank, legacy bot → v1.1 (at 57% of its arena run)</span></div>
-  <div class="stat"><b>29.56</b><span>arena score, from 17.91</span></div>
-  <div class="stat"><b>46k–73k</b><span>simulated turns per 44 ms turn on CodinGame</span></div>
-  <div class="stat"><b>0</b><span>simulator mismatches in every checked game</span></div>
+  <div class="stat"><b>328 → 3</b><span>Legend rank of 394, legacy bot → v1.3</span></div>
+  <div class="stat"><b>33.30</b><span>arena score, from 17.91</span></div>
+  <div class="stat"><b>40k–60k</b><span>simulated turns per 44 ms turn on CodinGame (all snakes moved)</span></div>
+  <div class="stat"><b>0</b><span>simulator mismatches since the board model was made 64 rows high</span></div>
 </div>
-<p>The bot is one C++ file of about 900 lines. It has four parts, and this page follows them in the order the data flows:</p>
+<p>The bot is one C++ file of about 1,250 lines; the submission adds the net's weights as text, 84k characters in all. This page follows the data through it, then the tools around it:</p>
 <figure>
-<svg viewBox="0 0 760 120" role="img" aria-label="Pipeline: input, state, search, output">
+<svg viewBox="0 0 760 150" role="img" aria-label="Pipeline: input, state, search with evaluation, output">
   <g fill="none" stroke="var(--line)" stroke-width="1.5">
-    <rect x="4" y="30" width="150" height="60" rx="8" fill="var(--bg)"/>
-    <rect x="204" y="30" width="150" height="60" rx="8" fill="var(--bg)"/>
-    <rect x="404" y="30" width="150" height="60" rx="8" fill="var(--bg)"/>
-    <rect x="604" y="30" width="150" height="60" rx="8" fill="var(--bg)"/>
+    <rect x="4" y="20" width="150" height="60" rx="8" fill="var(--bg)"/>
+    <rect x="204" y="20" width="150" height="60" rx="8" fill="var(--bg)"/>
+    <rect x="404" y="20" width="150" height="60" rx="8" fill="var(--bg)"/>
+    <rect x="604" y="20" width="150" height="60" rx="8" fill="var(--bg)"/>
+    <rect x="304" y="104" width="350" height="36" rx="8" fill="var(--bg)"/>
   </g>
   <g stroke="var(--snake)" stroke-width="2" fill="var(--snake)">
-    <path d="M158 60 H196" /><path d="M196 60 l-7 -4 v8 z"/>
-    <path d="M358 60 H396" /><path d="M396 60 l-7 -4 v8 z"/>
-    <path d="M558 60 H596" /><path d="M596 60 l-7 -4 v8 z"/>
+    <path d="M158 50 H196" /><path d="M196 50 l-7 -4 v8 z"/>
+    <path d="M358 50 H396" /><path d="M396 50 l-7 -4 v8 z"/>
+    <path d="M558 50 H596" /><path d="M596 50 l-7 -4 v8 z"/>
+    <path d="M479 84 V98" /><path d="M479 98 l-4 -7 h8 z"/>
   </g>
-  <text x="79" y="56" text-anchor="middle">protocol</text><text x="79" y="72" text-anchor="middle" class="mut">parse + resync</text>
-  <text x="279" y="56" text-anchor="middle">State</text><text x="279" y="72" text-anchor="middle" class="mut">board + 8 snakes</text>
-  <text x="479" y="56" text-anchor="middle">search</text><text x="479" y="72" text-anchor="middle" class="mut">step() + evaluate()</text>
-  <text x="679" y="56" text-anchor="middle">output</text><text x="679" y="72" text-anchor="middle" class="mut">"0 UP;1 LEFT"</text>
-  <text x="479" y="108" text-anchor="middle" class="mut">≈ 7,000 iterations × depth 11–14 per turn</text>
+  <text x="79" y="46" text-anchor="middle">protocol</text><text x="79" y="62" text-anchor="middle" class="mut">parse + resync</text>
+  <text x="279" y="46" text-anchor="middle">State</text><text x="279" y="62" text-anchor="middle" class="mut">board + 8 snakes</text>
+  <text x="479" y="46" text-anchor="middle">search</text><text x="479" y="62" text-anchor="middle" class="mut">step() per ply</text>
+  <text x="679" y="46" text-anchor="middle">output</text><text x="679" y="62" text-anchor="middle" class="mut">"0 UP;1 LEFT"</text>
+  <text x="479" y="127" text-anchor="middle">leaf: reach tables + Voronoi flood + net</text>
+  <text x="150" y="127" text-anchor="middle" class="mut">≈ 7,000–10,000 iterations × depth 11–14 per turn</text>
 </svg>
-<figcaption>Each turn the input is parsed into a <code>State</code>, checked against what the simulator predicted, searched for 44 ms, and answered with one direction per snake.</figcaption>
+<figcaption>Each turn the input is parsed into a <code>State</code>, checked against what the simulator predicted, searched for 44 ms, and answered with one direction per snake. Every iteration ends in one evaluation.</figcaption>
 </figure>
 </section>
 
@@ -177,10 +191,10 @@ svg .mut { fill: var(--muted); }
 </section>
 
 <section id="board">
-<h2>Board: a 64 × 48 byte array</h2>
-<p>The grid is at most 44 × 24, but snakes may hang off its edges, so the model adds room around it: 10 columns left, 8 rows on top, and the rest to the right and below. One byte per cell.</p>
+<h2>Board: a 64 × 64 byte array</h2>
+<p>The grid is at most 44 × 24, but snakes may hang off its edges, so the model adds room around it: 10 columns left, 20 rows on top, and the rest to the right and below. One byte per cell.</p>
 <figure>
-<svg viewBox="0 0 700 330" role="img" aria-label="The 64 by 48 model with the real grid inside">
+<svg viewBox="0 0 700 330" role="img" aria-label="The 64 by 64 model with the real grid inside">
   <rect x="30" y="20" width="512" height="288" fill="var(--bg)" stroke="var(--apple)" stroke-width="3"/>
   <rect x="110" y="68" width="352" height="144" fill="var(--panel)" stroke="var(--snake)" stroke-width="2"/>
   <rect x="110" y="206" width="352" height="6" fill="var(--wall)"/>
@@ -191,11 +205,11 @@ svg .mut { fill: var(--muted); }
   <text x="286" y="228" text-anchor="middle" class="mut">bottom row is always wall</text>
   <text x="36" y="36" class="mut">VOID ring (1 cell)</text>
   <text x="70" y="140" text-anchor="middle" class="mut">10 cols</text>
-  <text x="286" y="44" text-anchor="middle" class="mut">8 rows</text>
-  <text x="286" y="268" text-anchor="middle" class="mut">15+ rows: room to fall out</text>
-  <text x="560" y="60">cell = (y+8)·64 + (x+10)</text>
+  <text x="286" y="44" text-anchor="middle" class="mut">20 rows</text>
+  <text x="286" y="268" text-anchor="middle" class="mut">19+ rows: room to fall out</text>
+  <text x="560" y="60">cell = (y+20)·64 + (x+10)</text>
   <text x="560" y="84">up    −64</text><text x="560" y="100">right  +1</text><text x="560" y="116">down  +64</text><text x="560" y="132">left   −1</text>
-  <text x="560" y="164">x = (cell &amp; 63) − 10</text><text x="560" y="180">y = (cell >> 6) − 8</text>
+  <text x="560" y="164">x = (cell &amp; 63) − 10</text><text x="560" y="180">y = (cell >> 6) − 20</text>
 </svg>
 <figcaption>A stride of 64 turns "which row" into a shift and "one cell down" into +64. The red outer ring is <code>VOID</code>.</figcaption>
 </figure>
@@ -212,6 +226,7 @@ svg .mut { fill: var(--muted); }
 <pre><code>occ[c] >= WALL      <span class="c">// a head here collides: wall, void or any body</span>
 occ[c] <  WALL      <span class="c">// free to enter: empty or apple</span></code></pre>
 <div class="note"><b>Why a ring of VOID.</b> With it, no move and no fall ever needs a bounds check: any step off the model lands on a cell that already says "stop". It is the one place the model differs from the game, where a snake could wander more than 9 columns outside the grid. The search never wants to, and no opponent has in a checked game.</div>
+<div class="note warn"><b>The top margin was 8 rows until v1.1.</b> Two arena games had simulator mismatches (11 in one, 1 in the other): a snake standing on other snakes had climbed above the model. The model is now 64 rows with 20 above the grid, and the mismatches are gone.</div>
 </section>
 
 <section id="snake">
@@ -245,15 +260,15 @@ occ[c] <  WALL      <span class="c">// free to enter: empty or apple</span></cod
 
 <h3><code>struct State</code></h3>
 <pre><code><span class="k">struct</span> State {
-    uint8_t occ[3072];     <span class="c">// the board</span>
+    uint8_t occ[4096];     <span class="c">// the board</span>
     Snake s[8];            <span class="c">// player 0's snakes first, then player 1's</span>
     int napples, turn;
     int losses[2];         <span class="c">// the tie-break</span>
     int len[2], alive[2];  <span class="c">// total body parts and live snakes per player</span>
-};                         <span class="c">// 5,200 bytes</span></code></pre>
+};                         <span class="c">// 6,200 bytes</span></code></pre>
 <p><code>len</code>, <code>alive</code> and <code>napples</code> are updated in place by every move, so the end-of-game test and the score cost nothing:</p>
 <pre><code>bool terminal() { <span class="k">return</span> napples == 0 || alive[0] == 0 || alive[1] == 0 || turn >= 200; }</code></pre>
-<p>A whole state is copied once per search iteration. At 5.2 kB that copy is 1–2% of the search time, so the state was kept simple instead of adding undo logic.</p>
+<p>A whole state is copied once per search iteration. At 6.2 kB that copy is 3–4% of the search time, so the state was kept simple instead of adding undo logic.</p>
 </section>
 
 <section id="step">
@@ -262,7 +277,7 @@ occ[c] <  WALL      <span class="c">// free to enter: empty or apple</span></cod
 <h3>Pass 1: move, and release the tail</h3>
 <pre><code><span class="k">for</span> each live snake i:
     nh[i]  = head + DELTA[mv[i]];
-    eat[i] = occ[nh[i]] == APPLE;
+    eat[i] = occ[nh[i]] == APPLE &amp;&amp; len < 127;       <span class="c">// the ring buffer holds 128</span>
     <span class="k">if</span> (!eat[i]) {
         t = tail;
         sup -= (occ[t + 64] is WALL or APPLE);   <span class="c">// the tail was resting on something</span>
@@ -290,7 +305,7 @@ occ[c] <  WALL      <span class="c">// free to enter: empty or apple</span></cod
 
 <section id="falls">
 <h2>Falls</h2>
-<p>The referee's rule: a snake is grounded if any part is directly above a wall, an apple or a grounded snake. Every other snake drops one row, together, and the test repeats. That loop is in the source as <code>falls()</code>, kept as the reference. It was <b>47% of the search time</b>, because falling is not rare: a snake climbing straight up falls back one row every single turn.</p>
+<p>The referee's rule: a snake is grounded if any part is directly above a wall, an apple or a grounded snake. Every other snake drops one row, together, and the test repeats. That loop is in the source as <code>falls()</code>, kept as the reference. It was <b>47% of the search time</b>, because falling is not rare: a snake climbing straight up falls back one row every single turn. Counted later on two positions: 95–98% of simulated turns have at least one snake in the air, 2.5–4.3 snakes per turn, and nearly all of them really drop, by one row on average. In the trees the snakes climb at random and come down again, so the fall code is the common path.</p>
 <figure>
 <pre style="margin:0;border:none;background:none;padding:0"><code>turn t          after the move       after the fall
   .               H                    .
@@ -335,7 +350,7 @@ occ[c] <  WALL      <span class="c">// free to enter: empty or apple</span></cod
 <section id="exact">
 <h2>Proving it exact</h2>
 <h3>Fast code against reference code</h3>
-<p>Build the bot and the referee twice, once with <code>-DSLOWFALL</code> (the referee's loop, no shortcuts). With a fixed number of iterations and fixed seeds the search is deterministic, so both builds must play the same games move for move. 80 games with 8 snakes each: identical results. The same test covered the support counters and the cached facing.</p>
+<p>Build the bot and the referee twice, once with <code>-DSLOWFALL</code> (the referee's loop, no shortcuts). With a fixed number of iterations and fixed seeds the search is deterministic, so both builds must play the same games move for move. 80 games with 8 snakes each: identical results. The same test covered the support counters and the cached facing, and it is the gate for every later change that must not alter play: the reordered reach table and the bit-row engine experiment were both checked this way (same scores and lengths of 40 games).</p>
 <h3>The simulator against CodinGame: <code>resync</code></h3>
 <p>The input never says what the opponent played. Each turn the bot takes the previous position, its own moves, and tries every combination of opponent moves, three per snake, at most 81:</p>
 <pre><code><span class="k">for</span> each combination c:
@@ -347,7 +362,7 @@ occ[c] <  WALL      <span class="c">// free to enter: empty or apple</span></cod
         <span class="k">return</span> true;
     }
 <span class="k">return</span> false;                            <span class="c">// the simulator disagrees with the game</span></code></pre>
-<p>One pass does three jobs: it proves the simulator matched the referee on that turn, it recovers the opponent's moves, and it carries the tie-break counters forward. A failure is counted in stderr and tagged <code>DS</code> on a move, which shows in arena battle logs where stderr is not kept. Result so far: 0 failures.</p>
+<p>One pass does three jobs: it proves the simulator matched the referee on that turn, it recovers the opponent's moves, and it carries the tie-break counters forward. A failure is counted in the status line the bot prints every turn (<code>desync N</code>) and tagged <code>DS</code> on a move, which shows in arena battle logs. Since the taller board model: 0 failures.</p>
 </section>
 
 <section id="search">
@@ -410,7 +425,7 @@ m = horizontal max of q;
 <pre><code><span class="k">for</span> (;;) {
     every 16 iterations: stop if the clock passed the budget;
     depth = 3 + iters/250   (first 1000 iterations)   then +1 per 1000;
-    State S = root;                                   <span class="c">// the 5.2 kB copy</span>
+    State S = root;                                   <span class="c">// the 6.2 kB copy</span>
     <span class="k">for</span> (d = 0; d < depth && !S.terminal(); d++) {
         <span class="k">for</span> each live snake i:
             mask = validMask(S, i);
@@ -420,74 +435,185 @@ m = horizontal max of q;
         S.step(all moves);
         sum += length difference;                     <span class="c">// for the "eat sooner" term</span>
     }
-    raw = evaluate(S, ...);                           <span class="c">// once, at the end</span>
+    raw = evaluate(S, ..., own);                      <span class="c">// once, at the end</span>
+    val[i] = squash((raw ± 0.64·own[i]) / 8.55);      <span class="c">// one value per snake, see below</span>
     <span class="k">for</span> every remembered (node, m) of snake i:  w[m] += val[i];  n[m]++;  N++;
 }
 play, for each of my snakes, the most visited move at its root;</code></pre>
 <ul>
-  <li><b>Progressive depth.</b> The first iterations are shallow (depth 3), so every snake's first moves get sampled before anything deep is tried. By the end of a turn the depth is 11–14. The idea is from _H3R0_'s post-mortem.</li>
+  <li><b>Progressive depth.</b> The first iterations are shallow (depth 3), so every snake's first moves get sampled before anything deep is tried. By the end of a turn the depth is 11–14. The schedule is the one in _H3R0_'s post-mortem. Starting deeper looked like +135 Elo at 1,000 iterations per move and was −3 in real time: depth must be tested at the real budget.</li>
+  <li><b>There is no rollout.</b> The whole line is inside the trees; below the last node of a tree the snake's first visit is a random valid move. The line stops at <code>depth</code> and the evaluation takes over.</li>
   <li><b>The clock</b> is read every 16 iterations, not every one: reading it costs about as much as a quarter of an iteration.</li>
-  <li><b>Budget.</b> 44 ms counted from the first input line of the turn, 850 ms on the first turn.</li>
+  <li><b>Budget.</b> 44 ms counted from the first input line of the turn, 850 ms on the first turn (the reach tables take 100–180 ms of it).</li>
+  <li><b>Exploration constant 0.735.</b> 0.35 → 0.7 was +61 Elo; the last digits are from the SPSA run.</li>
 </ul>
-</section>
-
-<section id="eval">
-<h2>Evaluation</h2>
-<p><code>evaluate</code> returns one number from my side, <code>raw</code>, in units of "apples":</p>
-<div class="wide"><table>
-<thead><tr><th>Term</th><th class="num">Weight</th><th>Why</th></tr></thead>
-<tbody>
-<tr><td>length difference</td><td class="num">1</td><td>the score. Half from the final position, half from the mean along the simulated line, so the same apple eaten sooner is worth more</td></tr>
-<tr><td>apple ownership</td><td class="num">0.25 / apple</td><td>+ if my nearest head is closer than theirs, − if further. Removing it costs 100 Elo</td></tr>
-<tr><td>distance to the nearest reachable apple, per snake</td><td class="num">≤ 0.94</td><td>0.08 per cell for the first 8 cells, 0.015 for the next 20, then flat</td></tr>
-<tr><td>losses difference</td><td class="num">0.05</td><td>the tie-break</td></tr>
-<tr><td>head elevation</td><td class="num">0.01 / row</td><td>higher is slightly better</td></tr>
-<tr><td>finished game</td><td class="num">± 4</td><td>added to the length difference, by score then losses</td></tr>
-</tbody></table></div>
-<div class="note warn"><b>The distance cost must stay below one apple.</b> When a snake eats the last apple it can reach, its "nearest apple" jumps to something far away or out of reach. If that jump costs more than the apple was worth, the evaluation goes <em>down</em> for eating, and the snake refuses to eat. Larger distance weights lost for exactly this reason (−89 Elo at 0.2 per cell) until the cost was capped at 0.94.</div>
-
-<h3 id="gravity">Gravity-aware distances</h3>
-<p>Board dumps of lost games showed the real problem with v1.0: the snakes sat still. Most apples hang in the air, a snake of length 3 cannot reach one four rows up, and a plain shortest-path distance pointed straight at it. The opponent ate 19 apples in the first 24 turns; we ate 12.</p>
-<p>The model that works is static. After every turn some part of a snake rests on something, so <b>its head is never more than (length − 1) cells of free path from a supported cell</b>, a free cell with a wall or an apple below it. Two passes on turn 1:</p>
-<ol class="steps">
-  <li><code>bfsSupport</code>: one multi-source BFS from every supported cell gives <code>hsup[c]</code>, how far cell c is from support.</li>
-  <li><code>bfsGravity</code>: for each apple and each length b from 1 to 16, a BFS from the apple that only walks through cells with <code>hsup ≤ b − 1</code>. Result: <code>gdist[apple][b−1][cell]</code>, one byte, 255 = out of reach at that length.</li>
-</ol>
-<figure>
-<pre style="margin:0;border:none;background:none;padding:0"><code>hsup:                      a snake of length 3 may have its head on cells ≤ 2
-  3 3 3 3 3 3 3
-  2 2 <span class="r">o</span> 2 2 2 2     &lt;- apple at hsup 2: reachable at length 3, not at length 2
-  1 1 1 1 1 1 1
-  0 0 0 0 0 0 0
-  # # # # # # #</code></pre>
-<figcaption>At the leaves a snake of length L reads <code>gdist[apple][min(L,16)−1][head]</code>: one table lookup per apple. The whole table is at most 128 × 16 × 3,072 bytes and is filled in about 20 ms on the first turn.</figcaption>
-</figure>
-<p>A first model, "never fall: every unsupported run along the path must be shorter than the body", lost 73 Elo and, with a strong penalty, 382. It is wrong about the game: a snake that turns sideways at the top of its column drops one row and carries on. Falling is part of normal movement.</p>
 
 <h3 id="credit">Per-snake credit</h3>
-<p>The largest single gain. In plain Smitsimax every tree receives the same value. But that value mostly reflects what the <em>other seven</em> snakes happened to do in that simulation, so each tree is learning from noise.</p>
-<pre><code>own[i] = (length of snake i now − at the root) − its distance cost;
+<p>The largest single gain of the project. In plain Smitsimax every tree receives the same value. But that value mostly reflects what the <em>other seven</em> snakes happened to do in that simulation, so each tree is learning from noise.</p>
+<pre><code>own[i] = (length of snake i now − at the root) − its distance cost;     <span class="c">// dead: −(its length at the root)</span>
 
-val[i] = squash((raw ± own[i]) / 6);     <span class="c">// + for my snakes, − for theirs (they minimise)</span>
+val[i] = squash((raw ± EV_SELF·own[i]) / EV_K);   <span class="c">// + for my snakes, − for theirs (they minimise)</span>
 ...
-node.w[m] += val[i];                      <span class="c">// each tree gets its own snake's value</span></code></pre>
+node.w[m] += val[i];                              <span class="c">// each tree gets its own snake's value</span></code></pre>
 <p>Every snake still sees the shared result, plus an extra share of what it did itself. Measured against the same bot without it:</p>
 <div class="wide"><table>
 <thead><tr><th>Weight of own[i]</th><th class="num">0.5</th><th class="num">1</th><th class="num">2</th><th class="num">4</th></tr></thead>
 <tbody><tr><td>Elo vs weight 0 (100 games each, ± 75–95)</td><td class="num">+269</td><td class="num">+288</td><td class="num">+205</td><td class="num">+173</td></tr></tbody>
 </table></div>
-<p><code>squash</code> is a rational approximation of tanh (<code>x(27+x²)/(27+9x²)</code>, clamped at ±3). Eight values per iteration made the real <code>tanh</code> worth replacing.</p>
+<p><code>squash</code> is a rational approximation of tanh (<code>x(27+x²)/(27+9x²)</code>, clamped at ±3). Eight values per iteration made the real <code>tanh</code> worth replacing. Taking weight away from the shared value instead (0.25 / 0.5 of it) loses 89 / 31 Elo: the snakes still need the common goal.</p>
+</section>
+
+<section id="eval">
+<h2>Evaluation</h2>
+<p><code>evaluate</code> returns one number from my side, <code>raw</code>, in units of "apples", and fills <code>own[]</code> for the credit. It has three sources: handcrafted terms on the reach tables, the Voronoi flood, and the value net.</p>
+<div class="wide"><table>
+<thead><tr><th>Term</th><th class="num">Weight</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>length difference</td><td class="num">1</td><td>the score. Half from the final position, half from the mean along the simulated line (<code>EV_MEAN</code>), so the same apple eaten sooner is worth more</td></tr>
+<tr><td>apple ownership</td><td class="num">0.19 / apple</td><td>+ if my nearest head is closer than theirs by the reach tables, − if further; a tie or an apple nobody reaches counts for nobody. Removing it costs 100 Elo</td></tr>
+<tr><td>Voronoi apples</td><td class="num">0.25 / apple</td><td>apples my flood reaches first minus theirs (below)</td></tr>
+<tr><td>distance to the nearest reachable apple, per snake</td><td class="num">≤ 1.0</td><td>0.07 per cell for the first 11 cells, 0.015 for the next 16, then flat</td></tr>
+<tr><td>live snakes</td><td class="num">1.39 / snake</td><td>from the SPSA run; it was 0 before</td></tr>
+<tr><td>losses difference</td><td class="num">0.057</td><td>the tie-break</td></tr>
+<tr><td>head elevation</td><td class="num">0.04 / row</td><td>higher is slightly better: most apples hang in the air</td></tr>
+<tr><td>finished game</td><td class="num">± 8.7</td><td>added to the length difference, by score then losses</td></tr>
+<tr><td>value net</td><td class="num">2.18 × logit</td><td>added to all of the above (next section)</td></tr>
+</tbody></table></div>
+<div class="note warn"><b>The distance cost must stay near one apple.</b> When a snake eats the last apple it can reach, its "nearest apple" jumps to something far away or out of reach. If that jump costs more than the apple was worth, the evaluation goes <em>down</em> for eating, and the snake refuses to eat. Larger distance weights lost for exactly this reason (−89 Elo at 0.2 per cell) until the cost was capped.</div>
+
+<h3 id="gravity">Reach tables: distances that know gravity</h3>
+<p>Board dumps of lost games showed the real problem with v1.0: the snakes sat still. Most apples hang in the air, a snake of length 3 cannot reach one four rows up, and a plain shortest-path distance pointed straight at it. The opponent ate 19 apples in the first 24 turns; we ate 12.</p>
+<p>What a snake can reach depends on where its body lies, and the body lies on the last cells of the head's path. So the tables are a search over <b>(cell, run)</b>, where <code>run</code> counts the cells the head has entered since the last <em>supported</em> cell (a free cell with a wall right below). A snake of length L holds itself up while <code>run ≤ L − 1</code>:</p>
+<div class="wide"><table>
+<thead><tr><th>Step of the head</th><th>New run</th></tr></thead>
+<tbody>
+<tr><td>into a supported cell</td><td>0</td></tr>
+<tr><td>down</td><td>unchanged (hanging or falling, the head goes down either way)</td></tr>
+<tr><td>sideways or up</td><td>run + 1, allowed while ≤ L − 1</td></tr>
+<tr><td>sideways at run L − 1</td><td>the whole snake drops one row: the head ends on the cell below</td></tr>
+<tr><td>into the apple itself</td><td>always allowed: it is eaten before the fall, and growing keeps the tail where it was</td></tr>
+</tbody></table></div>
+<figure>
+<pre style="margin:0;border:none;background:none;padding:0"><code>length 3 on a floor, apple (<span class="r">o</span>) three rows up:      four rows up:
+
+   .                                              <span class="r">o</span>     run would be 3: out of reach
+   <span class="r">o</span>   run 3 = the apple: allowed                 .     run 2
+   H   run 2                                      H
+   x   run 1                                      x     run 1
+   x   run 0 (on the floor)                       x     run 0
+  ###                                            ###</code></pre>
+<figcaption>The apple may be one cell further than the head can stand. Missing that ("off by one") made the earlier model call reachable apples unreachable: fixing it was +36 Elo.</figcaption>
+</figure>
+<p><code>bfsGravity(a)</code> runs this search <em>backwards</em> from apple <code>a</code>, once for every length 3 to 12 (longer snakes use 12), and writes <code>gd[length][run][cell][apple]</code>: moves to the apple, one byte, 255 = cannot get there. At a leaf, <code>reachIdx</code> finds where the snake is in the tables: its length index, and its current run (parts in front of its first part that rests on a wall or an apple).</p>
+<ul>
+  <li><b>The apple index is the innermost one.</b> A leaf asks for <em>every</em> apple from one (length, run, cell), so those answers sit next to each other in memory. With the apple outermost each lookup was a cache miss, and the evaluation was 23% of the search time; reordered, 14%, with identical play.</li>
+  <li><b>Size.</b> apples × 10 lengths × 12 runs × 4,096 cells: 22 MB for 46 apples, built in 100–180 ms on CodinGame's first turn.</li>
+  <li><b>Three models were tried before this one.</b> "Never fall, and charge the snake's current stretch to every run" (−73 to −382: a standing snake saw nothing as reachable). "Head within L − 1 of any supported cell" (static; wrong where the body cannot lie on that cell, which left snakes hopping under apples all game). The path model beat it by +51 ± 45.</li>
+</ul>
+<div class="note warn"><b>Only walls are support in the tables (v1.3).</b> Until v1.2 the apples of the first turn counted too. But the tables are built once, and an apple is gone when it is eaten: the table kept walking over a support that no longer existed. In a lost game against sZoom a length-3 snake in a pit was told for 80 turns that an apple was 9 moves away. In the simulation itself apples still hold snakes up, exactly as in the game; only the precomputed distances ignore them.</div>
+
+<h3 id="scan">One pass over apples × snakes: <code>scanApples</code></h3>
+<p>Everything the handcrafted terms and the net need from the tables comes out of one loop:</p>
+<pre><code><span class="k">for</span> each live snake i:  row[i] = GDROW(length index, run, head);   <span class="c">// its distances to all apples, contiguous</span>
+<span class="k">for</span> each apple a still on the board:
+    <span class="k">for</span> each live snake i:
+        v = row[i][a];
+        keep the two smallest in d1[i], d2[i];   cnt[i] += (v != 255);
+        m[owner] = min(m[owner], v), remember which snake;
+    both 255          -> unreach++
+    m[0] == m[1]      -> contested++
+    otherwise         -> owned[winner]++, own[that snake]++, prox[winner] += 1 / (1 + distance)</code></pre>
+<p>The first version scanned twice, once for the evaluation and once for the net inputs. Merging the two brought the net build from 5.1k back to 6.2k iterations per turn on CodinGame.</p>
+
+<h3 id="voronoi">Voronoi apple territory: <code>voronoi</code></h3>
+<p>The reach tables know walls and gravity but not where the bodies are. A snake circled for 24 turns ten moves from an apple that sat behind an opponent's body. The second view is the opposite: it knows the bodies and ignores gravity.</p>
+<p>A flood starts from all heads at once and spreads one cell per step over the free cells of the grid. Walls and bodies block (the tail cell does not: it will have moved). A cell belongs to the player whose flood arrives first; a cell both reach in the same step belongs to nobody and stops both. The evaluation adds 0.25 for every apple more in my territory than in theirs.</p>
+<pre><code>fr[y]  = free cells of row y            <span class="c">// one 64-bit word per row, bit = column</span>
+A[y], B[y] = my frontier, their frontier
+
+<span class="k">for</span> (step = 0; step < 32; step++) {
+    <span class="k">for</span> each row y:
+        ea = (A[y] << 1 | A[y] >> 1 | A[y-1] | A[y+1]) & fr[y];   <span class="c">// one step in four directions</span>
+        eb = (B[y] << 1 | B[y] >> 1 | B[y-1] | B[y+1]) & fr[y];
+        newA[y] = ea & ~eb;   newB[y] = eb & ~ea;                 <span class="c">// a tie belongs to nobody</span>
+        ownA[y] |= newA[y];   ownB[y] |= newB[y];
+        fr[y]  &= ~(ea | eb);
+    <span class="k">if</span> (nothing new) <span class="k">break</span>;
+    swap frontiers;
+}
+count the apples under ownA and under ownB;</code></pre>
+<ul>
+  <li><b>Bit rows.</b> A flood step is four shifts/ORs and two masks per row for each player, over at most 24 rows. The whole flood costs 6% of a simulated turn.</li>
+  <li><b>The weight must stay small.</b> 0.25 was +56 Elo, 0.6 was −111: with no gravity the flood happily gives away apples nobody can climb to. It is a correction next to the tables, not the main distance.</li>
+  <li><b>It needs truthful tables beside it.</b> Walls-only tables alone: −7. Voronoi alone: +56. Both: +111 ± 66, and +143 ± 66 against v1.2 in real time.</li>
+</ul>
+</section>
+
+<section id="net">
+<h2>Value net</h2>
+<p>A small net estimates "who wins from here" from the same quantities the handcrafted terms use, and its logit is <em>added</em> to them: <code>raw = handcrafted + 2.18 × logit</code>. Replacing the handcrafted value by the net alone was worse at every scale (−74 to +42); every other mix was worse than this one.</p>
+
+<h3 id="net-in">Inputs (<code>fillFeatures</code>)</h3>
+<p>All from the point of view of one player, all scaled to roughly 0–1. v1.3 runs the net <code>n0b</code> with 72 inputs: 16 about the game and 7 for each of 8 snake slots (4 per side, longest first; an empty slot is all zeros).</p>
+<div class="wide"><table>
+<thead><tr><th>Global (16)</th><th>Per snake slot (7)</th></tr></thead>
+<tbody><tr><td>turn; apples left; length difference; my length, their length; my losses, their losses; my live snakes, theirs; apples I own, they own (by the tables); contested apples; apples nobody reaches; grid height; sum of 1/(1+distance) over my owned apples, over theirs</td>
+<td>present; length; distance to the nearest reachable apple; to the second nearest; "has one in reach"; height of the head above the floor; apples it is the nearest of all to</td></tr></tbody>
+</table></div>
+<p>The source on the main branch already has the next input set (83): the two Voronoi apple counts, a soft ownership sum, and per snake the number of apples it can reach. The net for it is being trained.</p>
+
+<h3 id="net-fwd">Forward pass (<code>netForward</code>): 72 → 96 → 32 → 1, ReLU</h3>
+<p>CodinGame compiles without <code>-ffast-math</code>, so the compiler may not reorder a floating-point sum, and a dot product per output unit stays scalar. The pass is written the other way round, one <em>input</em> at a time:</p>
+<pre><code>h1 = b1;
+<span class="k">for</span> each input k:
+    <span class="k">if</span> (x[k] == 0) <span class="k">continue</span>;                 <span class="c">// empty snake slots cost nothing</span>
+    <span class="k">for</span> (j = 0; j < 96; j++) h1[j] += x[k] * W1T[k][j];     <span class="c">// "y += a·x": vectorises as written</span>
+h2 = b2;
+<span class="k">for</span> each k with h1[k] > 0:                    <span class="c">// the ReLU: units that are off are skipped</span>
+    <span class="k">for</span> (j = 0; j < 32; j++) h2[j] += h1[k] * W2T[k][j];
+out = b3 + dot(W3, relu(h2));</code></pre>
+<p>The weights are stored transposed (<code>netReady</code>) so each inner loop runs along memory. The net's cost went from 54% to 12% of a simulated turn; the outputs are checked against the training side on a file of records (<code>referee --evalcheck</code>, values agree to the sixth decimal).</p>
+
+<h3 id="net-train">Data and training</h3>
+<ol class="steps">
+  <li><b>Generate</b> (<code>referee --gen</code>, on Kaggle through <code>kaggle_gen.py</code>): the bot plays itself at fixed iterations on random maps; each snake plays a random valid move with probability 5% so the games differ. A record is the map seed, the moves of every turn and the search's own score per turn: a few hundred bytes per game. 24k games at 600 iterations, then 70k at 2,000.</li>
+  <li><b>Export</b> (<code>referee --export</code>): replay each game and write, for one position in three and for both players, the inputs plus three labels: the result (1 / ½ / 0), the final margin, the search score. Because records hold seed + moves, a change of inputs costs one export, not a new generation.</li>
+  <li><b>Train</b> (<code>train.py</code>, PyTorch on the laptop's GPU): Adam, cosine schedule, 20 epochs, batch 4,096, binary cross-entropy on a target that is half the result and half the result softened by the final margin; optionally blended with the search score.</li>
+  <li><b>Gate</b> like any other change (below).</li>
+</ol>
+<div class="wide"><table>
+<thead><tr><th>Net</th><th>Data</th><th class="num">Held-out accuracy</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>n0a</td><td>2.7M records, 600 iterations</td><td class="num">78.5%</td><td>added with weight 2: +42</td></tr>
+<tr><td>n0b</td><td>the same, retrained on the path-based reach inputs</td><td class="num"></td><td>+85 ± 45 at equal iterations (200 games)</td></tr>
+<tr><td>n1a, n1b</td><td>5.0M records, 2,000 iterations</td><td class="num">80.4%</td><td>+14 / +17 over n0b: inside the noise</td></tr>
+</tbody></table></div>
+<p>Three times the data from a deeper teacher bought almost nothing: with inputs that are the handcrafted quantities, the net can only improve how they are combined. That is why the next net gets new inputs, not more games.</p>
+
+<h3 id="net-pack">Packing into the source (<code>pack.py</code>)</h3>
+<p>The submission must be one text file under 100k characters. Each weight is quantised to 16 bits with one scale per array and written as three characters of six bits each, starting at <code>'0'</code>. Two characters of that range would break a C string, the backslash and the question mark (trigraphs), so they are replaced by <code>{</code> and <code>|</code> and mapped back by <code>dig()</code>. 10,145 weights are 30,435 characters; the largest rounding error is 3·10⁻⁵. The packed file still compiles with <code>-DLOCAL</code>, so the exact text that goes to CodinGame is what plays the local gate.</p>
+</section>
+
+<section id="tuning">
+<h2>Tuning: SPSA</h2>
+<p>After the credit term, single-parameter tests stopped finding anything: twenty in a row inside the noise. <code>spsa.py</code> tunes 15 parameters at once instead.</p>
+<pre><code><span class="k">for</span> each batch:
+    δ = ±1 at random for every parameter;
+    play θ + δ·step against θ − δ·step, 16 maps × both seats, 1,000 iterations per move;
+    θ += lr · (score − 0.5) · δ · step;          <span class="c">// every parameter moves towards the side that won</span>
+    append θ to league/spsa.jsonl;                <span class="c">// a run continues from the last line</span></code></pre>
+<p>250 batches (8,000 games, about an hour on eight cores). The end point moved the value scale 6 → 8.55, the win bonus 4 → 8.7, the own-credit weight 1 → 0.64, the live-snake term 0 → 1.39, and nudged the rest. Tuned against untuned at the tuning budget: +10 ± 60. Against v1.2 at 3,000 iterations: +111 ± 64, and about +25 at CodinGame's budget. A tuner finds a broad region, not a peak; its value here was mostly in the parameters nobody had thought of moving together.</p>
 </section>
 
 <section id="protocol">
 <h2>Protocol and resync: <code>main</code></h2>
 <ol class="steps">
-  <li><b>Init.</b> Read the grid into <code>baseOcc</code> (walls plus the VOID ring), the snake ids and owners. Allocate the node pools and fill the <code>sqrtLog</code> and <code>maskTab</code> tables.</li>
+  <li><b>Init.</b> Read the grid into <code>baseOcc</code> (walls plus the VOID ring), the snake ids and owners. Allocate the node pool and fill the <code>sqrtLog</code> and <code>maskTab</code> tables.</li>
   <li><b>Each turn.</b> Start the clock at the first input line. Rebuild <code>cur</code> from scratch: copy <code>baseOcc</code>, place apples, parse each body string straight into its ring buffer. Parts outside the model are cut off.</li>
-  <li><b>Turn 1 only.</b> Record the apple cells and run <code>bfsSupport</code>, then <code>bfsApple</code> and <code>bfsGravity</code> per apple.</li>
+  <li><b>Turn 1 only.</b> <code>initDistances</code>: record the apple cells, mark the supported cells (<code>bfsSupport</code>), run <code>bfsGravity</code> per apple, and build the free-cell rows of the grid for the Voronoi flood (<code>initGrid</code>). The embedded net is decoded once before the first turn (<code>loadEmbedded</code>).</li>
   <li><b><code>recount</code>.</b> Totals per player, <code>sup</code> and facing of every snake.</li>
   <li><b><code>resync</code>.</b> Check the simulator against the game and recover the opponent's moves (above).</li>
-  <li><b><code>search</code></b> with what is left of the 44 ms, then print <code>id DIRECTION</code> for each of my live snakes, joined by <code>;</code>.</li>
+  <li><b><code>search</code></b> with what is left of the 44 ms, then print <code>id DIRECTION</code> for each of my live snakes, joined by <code>;</code>, and one status line to stderr: iterations, depth, simulated turns, nodes, time, mismatches, losses, score, apples left. Those lines are what the arena analysis is built from.</li>
   <li><b>Remember</b> the position and my moves for the next turn's resync.</li>
 </ol>
 <p>The state is rebuilt from the input every turn instead of trusting the simulated one. The simulated state is only used to verify, so one bad turn can never corrupt the rest of the game.</p>
@@ -495,7 +621,7 @@ node.w[m] += val[i];                      <span class="c">// each tree gets its 
 
 <section id="speed">
 <h2>Speed</h2>
-<p>Measured on CodinGame with the built-in profiler (<code>#define PROF</code>): the TSC is read at each phase boundary of the loop and the shares printed to stderr every turn.</p>
+<p>Measured with the built-in profiler (<code>#define PROF</code>): the clock is read at each phase boundary of the loop and the shares printed. One "simulated turn" moves all the snakes of the game, about seven on average.</p>
 <h3>v1.0: 37k simulated turns per turn</h3>
 <div class="bars">
   <span>falls</span><div class="bar b2" style="width:47%"></div><span class="v">47%</span>
@@ -505,16 +631,16 @@ node.w[m] += val[i];                      <span class="c">// each tree gets its 
   <span>copy</span><div class="bar b2" style="width:2%"></div><span class="v">2%</span>
   <span>backup</span><div class="bar b2" style="width:2%"></div><span class="v">2%</span>
 </div>
-<h3>v1.1: 46k–73k simulated turns per turn</h3>
+<h3>v1.3 without the net: about 700 ns per simulated turn</h3>
 <div class="bars">
-  <span>falls</span><div class="bar" style="width:38%"></div><span class="v">36–41%</span>
-  <span>selection</span><div class="bar" style="width:27%"></div><span class="v">24–31%</span>
-  <span>move</span><div class="bar" style="width:22%"></div><span class="v">21–24%</span>
-  <span>evaluation</span><div class="bar" style="width:7%"></div><span class="v">6–8%</span>
-  <span>copy</span><div class="bar" style="width:2%"></div><span class="v">2%</span>
-  <span>backup</span><div class="bar" style="width:3%"></div><span class="v">2–3%</span>
+  <span>falls</span><div class="bar" style="width:38%"></div><span class="v">35–42%</span>
+  <span>selection</span><div class="bar" style="width:25%"></div><span class="v">24–26%</span>
+  <span>move</span><div class="bar" style="width:14%"></div><span class="v">13–15%</span>
+  <span>evaluation</span><div class="bar" style="width:14%"></div><span class="v">14%</span>
+  <span>copy</span><div class="bar" style="width:3%"></div><span class="v">3%</span>
+  <span>backup</span><div class="bar" style="width:2%"></div><span class="v">2%</span>
 </div>
-<p>One "simulated turn" moves all eight snakes. Cost per simulated turn went from about 2,640 TSC ticks to 1,800–2,200. The same build varies by ±20% between CodinGame games.</p>
+<p>At 700 ns for seven snakes, one snake costs about 100 ns per turn: 30 for its selection, 60 for a fall. With the net and the flood the same turn costs about 830 ns. On CodinGame that is 40k–60k simulated turns, some 350k snake moves, in 44 ms; the laptop in real time is about as fast, so a local real-time match is a fair picture of the arena budget. The same build varies by ±20% between CodinGame games.</p>
 <div class="wide"><table>
 <thead><tr><th>Trick</th><th>Where</th><th>Effect</th></tr></thead>
 <tbody>
@@ -522,34 +648,111 @@ node.w[m] += val[i];                      <span class="c">// each tree gets its 
 <tr><td>Ring-buffer bodies</td><td><code>Snake</code></td><td>a move is one store and a counter</td></tr>
 <tr><td>Tail cleared before collisions; head written only for survivors</td><td><code>step</code></td><td>the referee's simultaneous rules with no undo</td></tr>
 <tr><td>Totals kept in place</td><td><code>len, alive, napples</code></td><td>end test and score are free</td></tr>
-<tr><td>Support counters</td><td><code>sup</code>, <code>unsupport</code></td><td>falls skipped for every snake standing on a wall or apple</td></tr>
+<tr><td>Support counters</td><td><code>sup</code>, <code>unsupport</code></td><td>no fall test for a snake standing on a wall or apple</td></tr>
 <tr><td>Direct drop for airborne snakes</td><td><code>fastFalls</code></td><td>falls 47% → ~38% of a faster loop</td></tr>
 <tr><td>Cached facing</td><td><code>Snake::f</code></td><td>no compare chain per selection</td></tr>
 <tr><td>Branch-free SSE UCB</td><td><code>selectMove</code></td><td>selection 42% → 24–31%</td></tr>
 <tr><td>Bump-allocated node pool, never cleared</td><td><code>newNode</code></td><td>no allocation, no per-turn memset of 78 MB</td></tr>
-<tr><td>Precomputed distances, one byte each</td><td><code>gdist</code>, <code>adist</code></td><td>evaluation is table lookups: 6–8%</td></tr>
+<tr><td>Reach table with the apple index innermost</td><td><code>GDROW</code></td><td>a leaf's lookups are contiguous: evaluation 23% → 14%</td></tr>
+<tr><td>One scan for evaluation and net inputs</td><td><code>scanApples</code></td><td>5.1k → 6.2k iterations with the net</td></tr>
+<tr><td>Net in column form, zero inputs skipped</td><td><code>netForward</code></td><td>net cost 54% → 12% of a simulated turn</td></tr>
+<tr><td>Flood on 64-bit rows</td><td><code>voronoi</code></td><td>a territory per leaf for 6%</td></tr>
 <tr><td>Rational tanh</td><td><code>squash</code></td><td>eight values per iteration without <code>tanh</code></td></tr>
 <tr><td>Clock every 16 iterations</td><td><code>search</code></td><td></td></tr>
 </tbody></table></div>
-<div class="note"><b>How much is speed worth?</b> Measured: three times the iterations is +104 Elo at 1,000 iterations per move and +63 at 4,000. At the arena's 6,000–8,000 that makes a 1.5× faster engine worth about +20. The 27% speed-up alone, tested in real time against v1.0, was −14 ± 61: nothing measurable. For scale, the per-snake credit, six lines of code, was +288. Reported figures from other players: about 50k turns per 50 ms for the contest winner, 4k–6k iterations per 45 ms for sZoom. This engine is in that range; the "150k / 250k simulations" quoted in two post-mortems are probably counted per snake move, which would put this one near 400k.</div>
+<h3>The bit-row engine that was not kept</h3>
+<p>Since falls are the largest share, the whole board was rewritten as bit rows (<code>tools/experiments/bitboard_engine.cpp</code>): apples, the union of all snakes and each snake as one 64-bit word per row, and every body stored minus an offset so that a fall is one addition instead of a pass over the parts. A falling snake then costs a few word operations per row it spans, whatever its length. It played 40 games identical to the byte board. On the laptop it was exactly as fast (708 against 700 ns). On CodinGame, the same game replayed twice with each build, it was slower: 398k and 762k simulated turns in the first 850 ms against 665k and 1,013k. The byte board's loops over the parts are short, and the bit version pays on every move: two boards to update, an offset on every body read, a search for the owner of a cell.</p>
+<div class="note"><b>How much is speed worth?</b> Measured: three times the iterations is +104 Elo at 1,000 iterations per move and +63 at 4,000. At the arena's 7,000–10,000 a 1.5× faster engine is worth about +20. For scale, the per-snake credit, six lines of code, was +288, and the two evaluation fixes of v1.3 were +143. The gains of the evaluation also shrink with depth: the tuned net build was +111 at 3,000 iterations and about +25 at 7,000.</div>
 </section>
 
 <section id="tools">
 <h2>Local tools in the same file</h2>
 <dl class="fn">
-  <dt>PARAM(name, default)</dt><dd>Every constant of the search and evaluation. In a <code>-DLOCAL</code> build it reads <code>SB_name</code> from the environment, so a parameter sweep needs no rebuild. In the submission it is a plain constant.</dd>
+  <dt>PARAM(name, default)</dt><dd>Every constant of the search and evaluation, 38 of them. In a <code>-DLOCAL</code> build it reads <code>SB_name</code> from the environment, so a parameter sweep needs no rebuild and the two sides of a match can be the same binary. In the submission it is a plain constant.</dd>
   <dt>SB_ITERS=N</dt><dd>Replace the clock by a fixed number of iterations per move. With <code>SB_SEED</code> the bot is deterministic, which is what makes the exactness test and load-independent matches possible.</dd>
-  <dt>SB_BENCH=N</dt><dd>Play 100 turns of self-play from the given position at N iterations and print simulated turns per second, with the phase split in a <code>-DPROF</code> build.</dd>
-  <dt>-DPROF</dt><dd>The phase profiler: <code>PROF_START</code> / <code>PROF_END(phase)</code> around copy, selection, move, fall, evaluation and backup. Works on CodinGame by putting <code>#define PROF</code> on the first line.</dd>
-  <dt>-DDUMP=N</dt><dd>Print the board to stderr every N turns. This is what showed the snakes sitting still.</dd>
+  <dt>SB_NET=file</dt><dd>Load a net from a raw float file instead of the embedded text.</dd>
+  <dt>SB_BENCH=N</dt><dd>Play 100 turns of self-play from the given position at N iterations and print nanoseconds per simulated turn, with the phase split in a <code>-DPROF</code> build. Three saved positions are in <code>tools/bench/</code>.</dd>
+  <dt>-DPROF</dt><dd>The phase profiler: <code>PROF_START</code> / <code>PROF_END(phase)</code> around copy, selection, move, fall, evaluation and backup.</dd>
+  <dt>-DDUMP=N</dt><dd>Print the board to stderr every N turns and whenever a snake dies, with each snake's length, head, run and nearest reachable apple. Works on CodinGame by putting <code>#define DUMP 4</code> on the first line; this is the tool that found every fault in the evaluation.</dd>
   <dt>-DSLOWFALL</dt><dd>Use the referee's fall loop as written: the reference build.</dd>
+  <dt>-DSUP_APPLES, -DLMAX_=n</dt><dd>The old reach tables with first-turn apples as support; another length cap for the tables.</dd>
 </dl>
-<p><code>tools/referee.cpp</code> includes <code>bot.cpp</code> for the rules, adds a port of the official map generator (<code>GridMaker.java</code>: mirrored walls, filled air pockets, thinned walls, sunk bottom island, apples, spawns) and runs two bot processes over pipes, every map with both seats. <code>build/bot@SB_UCB_C=0.4</code> gives one side its own parameters. The same matches run on Kaggle CPU kernels through <code>tools/kaggle_match.py</code>.</p>
+</section>
+
+<section id="workflow">
+<h2>Measuring a change</h2>
+<p>Nothing goes in because it sounds right. The rule is one change, one measurement, and the result is written to <code>docs/history.md</code> whether it is good or bad.</p>
+<figure>
+<svg viewBox="0 0 760 96" role="img" aria-label="Gates: exactness, fixed iterations, real time, gauntlet, arena">
+  <g fill="var(--bg)" stroke="var(--line)" stroke-width="1.5">
+    <rect x="4" y="20" width="136" height="56" rx="8"/><rect x="158" y="20" width="136" height="56" rx="8"/>
+    <rect x="312" y="20" width="136" height="56" rx="8"/><rect x="466" y="20" width="136" height="56" rx="8"/>
+    <rect x="620" y="20" width="136" height="56" rx="8" stroke="var(--snake)" stroke-width="2.5"/>
+  </g>
+  <text x="72" y="44" text-anchor="middle">exactness</text><text x="72" y="60" text-anchor="middle" class="mut">same games</text>
+  <text x="226" y="44" text-anchor="middle">fixed iterations</text><text x="226" y="60" text-anchor="middle" class="mut">100 games, 3 min</text>
+  <text x="380" y="44" text-anchor="middle">real time</text><text x="380" y="60" text-anchor="middle" class="mut">vs the live version</text>
+  <text x="534" y="44" text-anchor="middle">gauntlet</text><text x="534" y="60" text-anchor="middle" class="mut">vs real players</text>
+  <text x="688" y="44" text-anchor="middle">arena</text><text x="688" y="60" text-anchor="middle" class="mut">decides</text>
+</svg>
+<figcaption>Each gate is slower and closer to the truth than the one before it.</figcaption>
+</figure>
+<dl class="fn">
+  <dt>tools/referee.cpp</dt><dd>Includes <code>bot.cpp</code> for the rules, so the referee and the bot cannot disagree. It adds a port of the official map generator (<code>GridMaker.java</code>: mirrored walls, filled air pockets, thinned walls, sunk bottom island, apples, spawns; same distribution of maps, its own random numbers) and runs two bot processes over pipes, every map with both seats. <code>build/bot@SB_UCB_C=0.4</code> gives one side its own parameters. The summary line gives wins, losses, draws, Elo with its 95% interval, faults and slow turns.</dd>
+  <dt>fixed iterations</dt><dd><code>referee A B -g 50 -n 3000</code>: 100 games in about three minutes on eight cores, independent of the machine's load. 100 games are ± 65 Elo, so only large effects show; anything about depth or time must be repeated in real time.</dd>
+  <dt>real time</dt><dd>The same without <code>-n</code>, two or three games at a time so the cores are not shared, always against the frozen binary of the live version.</dd>
+  <dt>tools/league.py</dt><dd>Freezes every submitted version (source and binary) and records head-to-head matches between versions.</dd>
+  <dt>tools/kaggle_match.py, kaggle_gen.py</dt><dd>The same matches and the self-play generation on Kaggle CPU kernels (x86 like CodinGame, two accounts): a few hundred games in parallel while the laptop does something else.</dd>
+  <dt>tools/gauntlet.py</dt><dd>Plays a source against chosen arena players through CodinGame test games and logs each result. Slow (one game a minute, 600 a day) but it is the only test against opponents that do not share our blind spots.</dd>
+  <dt>tools/cg.py</dt><dd>The CodinGame API: a test game against any player or a replay of any battle (the log with our stderr is saved), submit with the IDE mirrored, progress, leaderboard.</dd>
+  <dt>tools/arena.py</dt><dd>Archives the battles of every submission and prints the score per opponent.</dd>
+  <dt>tools/spsa.py, train.py, pack.py</dt><dd>Tuning, training and packing, described above.</dd>
+</dl>
+<div class="note warn"><b>What the gates cannot see.</b> Self-play between two builds that share a fault measures nothing: the phantom-support fix alone was −7 ± 65, because both sides walked the same imaginary paths. And single arena games are close to coin flips: twelve of v1.1's lost battles, replayed with the same code, seat, map and opponent, gave nine wins. Only margins over many games mean anything.</div>
+</section>
+
+<section id="faults">
+<h2>Finding faults: one lost game, read closely</h2>
+<p>The arena logs keep our status line of every turn, so the score can be followed through each game. Over 189 battles: against everybody but the first two the margin stays near zero until the end (+0.3, +0.1, +0.2, then +1.0). Against _H3R0_ and sZoom it is 0 with three quarters of the apples left, −1.2 at half, −2.7 at a quarter, −4.9 at the end, and we lose one body part more per game than they do.</p>
+<p>A build with <code>#define DUMP 4</code> replayed on one of those games (<code>cg.py test out/dump.cpp --replay GAME</code>) prints the board every four turns. One game against sZoom showed three faults at once:</p>
+<figure>
+<pre style="margin:0;border:none;background:none;padding:0"><code>turn 8, bottom of the map (ours: c, b   theirs: x, y   apples: o)
+
+ #....#.<span class="r">o</span>X#..#.##############.#..#B<span class="r">o</span>.#....#
+ ###.cccCx#....##############....#bYyyy.###
+ ....#..#x..#..##############..#..b#..#....
+ ##########################################
+
+left pit:  our C (length 4) below the apple, their X (length 3) beside it
+right pit: the mirror image, their Y (length 4) below, our B (length 3) beside</code></pre>
+<figcaption>Both apples were entered by both heads: both snakes eat, both lose the head, nothing changes. The next turn decided the game.</figcaption>
+</figure>
+<ol class="steps">
+  <li><b>A body part can be worth a snake.</b> On turn 9 our C stepped into the now empty cell again, and so did X. X, at length 3, died. C lost a part and was length 3: too short to climb out of its pit, where it stayed for the remaining 190 turns. On the right their Y kept length 4, left its pit and ate nine more apples; our B, length 3, never left. Two of our four snakes ended the game at length 3. The evaluation priced "no apple in reach" at about one apple.</li>
+  <li><b>Phantom support.</b> It did not even see that, because the reach tables still counted the eaten apple as something to stand on, and reported an apple 9 moves away for 80 turns.</li>
+  <li><b>Bodies are not in the tables.</b> A length-9 snake circled for 24 turns ten moves from an apple behind an opponent's body.</li>
+</ol>
+<p>Walls-only tables fixed the second and the Voronoi flood sees the third: together +143 ± 66 against v1.2, and in the arena the record against ranks 4–12 went from level to clearly ahead. The first is not solved: a flat cost for a snake with nothing in reach is −115 Elo, because a snake in the air or between apples is often without reach for a turn.</p>
+<p>A second game, lost 41–44 after leading 39–37 with ten apples left, showed what remains. At that point their four heads were already next to seven of the ten, three of them a cluster in the top corner, reached up a wall column by a length-7 snake. Ours had been eating the nearest apple each. They take the contested and far apples first and leave the safe ones for later; the lost endgame was lost twenty turns earlier.</p>
+</section>
+
+<section id="versions">
+<h2>Versions</h2>
+<div class="wide"><table>
+<thead><tr><th>Version</th><th>What changed</th><th>Local gate</th><th class="num">Arena</th><th class="num">Rank</th></tr></thead>
+<tbody>
+<tr><td>legacy</td><td>the March 2026 contest bot: per-snake MCTS, depth 6</td><td></td><td class="num">17.91</td><td class="num">328</td></tr>
+<tr><td>v1.0</td><td>from scratch: exact engine, Smitsimax, plain evaluation</td><td>+14 −7 in the games legacy finished</td><td class="num">19.0 (at 54%)</td><td class="num">~254</td></tr>
+<tr><td>v1.1</td><td>per-snake credit, gravity-aware distances with a capped cost, UCB 0.7, faster engine</td><td>+382 ± 119 vs v1.0</td><td class="num">30.49</td><td class="num">11</td></tr>
+<tr><td>v1.2</td><td>path-based reach model, apple one cell beyond reach, board model 64 rows</td><td>+26 ± 44 vs v1.1</td><td class="num">32.14</td><td class="num">3</td></tr>
+<tr><td>v1.3</td><td>walls-only reach tables, Voronoi apple territory, value net n0b, SPSA parameters</td><td>+143 ± 66 vs v1.2</td><td class="num">33.30</td><td class="num">3</td></tr>
+</tbody></table></div>
+<p>v1.3's 159 arena battles: +81 −60 =18. Against ranks 4–9: blasterpoard +12 −6, RamzaBeoulve +10 −5, delineate +9 −4, marwar22 +6 −1, ram_trains_2026 +8 −7, frictionless +6 −5. Against sZoom +3 −17 =3 and _H3R0_ +4 −14 =2: the first two (37.3 and 36.9) are still four points clear, and most of those losses are now by one to three apples.</p>
 </section>
 
 <section id="failed">
 <h2>What did not work</h2>
-<p>All still in the source as parameters, switched off.</p>
+<p>All measured, most still in the source as parameters, switched off. Elo against the build of the time, 100 games each unless said (± 60–65).</p>
 <div class="wide"><table>
 <thead><tr><th>Idea</th><th class="num">Result (Elo)</th><th>Reading</th></tr></thead>
 <tbody>
@@ -559,8 +762,18 @@ node.w[m] += val[i];                      <span class="c">// each tree gets its 
 <tr><td>Ownership credit to the nearest snake</td><td class="num">−35, −42</td><td></td></tr>
 <tr><td>Deeper start (depth 5 instead of 3)</td><td class="num">+135 at 1,000 iterations, −3 in real time</td><td>fixed-iteration tests at low counts mislead on depth</td></tr>
 <tr><td>"Never fall" gravity model</td><td class="num">−73 to −382</td><td>falling is normal movement</td></tr>
+<tr><td>Net instead of the handcrafted value, at four scales</td><td class="num">−74 to +42</td><td>the sum of both is better than either</td></tr>
+<tr><td>Nets on three times the data from a deeper teacher</td><td class="num">+14, +17</td><td>the inputs are the limit, not the data</td></tr>
+<tr><td>Values measured from the root's evaluation, six variants</td><td class="num">−42 to +14</td><td></td></tr>
+<tr><td>Gradient for a snake with nothing in reach (distance for the longest length)</td><td class="num">+21, 0, −78</td><td></td></tr>
+<tr><td>Reach tables up to length 20 instead of 12</td><td class="num">−7</td><td>three times the table time for nothing</td></tr>
+<tr><td>Flat cost for a snake with no apple in reach, 2 / 5 apples</td><td class="num">+24 / −115</td><td>"nothing in reach" is often true for one turn only</td></tr>
+<tr><td>Voronoi weight 0.6; territory cells instead of apples; flood replacing the table ownership</td><td class="num">−111; 0; −28</td><td>the flood has no gravity</td></tr>
+<tr><td>Soft ownership: tanh of the distance margin per apple, four variants</td><td class="num">+49, −42, −38, −7</td><td>noise</td></tr>
+<tr><td>Root safety: never enter a cell an enemy head can enter</td><td class="num">−56, −78</td><td>a snake that always yields is pushed around</td></tr>
+<tr><td>Bit-row engine</td><td class="num">same play, slower on x86</td><td>see Speed</td></tr>
 </tbody></table></div>
-<p>After the credit term, twenty parameter changes in a row landed inside the noise: the handcrafted evaluation is on a plateau. The next step is a learned evaluation.</p>
+<p>After v1.3 the same single change measured +67 in one batch and −70 in the next. Effects of that size need 400 or more games, or a different kind of evidence: the gauntlet, the arena logs, a dump of one lost game.</p>
 </section>
 
 <section id="reference">
@@ -589,15 +802,29 @@ node.w[m] += val[i];                      <span class="c">// each tree gets its 
 </dl>
 <h3>Distances</h3>
 <dl class="fn">
-  <dt>bfsApple(a)</dt><dd>Plain BFS from apple a through non-wall cells into <code>adist</code>. Used when gravity distances are switched off.</dd>
-  <dt>bfsSupport(occ)</dt><dd>Multi-source BFS from all supported cells into <code>hsup</code>.</dd>
-  <dt>bfsGravity(a)</dt><dd>Sixteen restricted BFS passes from apple a into <code>gdist</code>.</dd>
-  <dt>budget(S, i)</dt><dd>Length of snake i, capped at 16: its row in <code>gdist</code>.</dd>
+  <dt>bfsSupport(occ)</dt><dd>Marks the supported cells: free, with a wall right below.</dd>
+  <dt>GDROW(l, r, c)</dt><dd>Pointer to the distances from (length index l, run r, cell c) to every apple.</dd>
+  <dt>bfsGravity(a)</dt><dd>Backward search over (cell, run) from apple a, for every length 3–12, into <code>gd</code>.</dd>
+  <dt>reachIdx(S, i, l, r)</dt><dd>Where snake i is in the tables: its length index and current run.</dd>
+  <dt>initDistances(S)</dt><dd>All tables for a new game, from its first position.</dd>
+  <dt>initGrid()</dt><dd>The free cells of the real grid as bit rows, for the flood.</dd>
 </dl>
-<h3>Evaluation and search</h3>
+<h3>Evaluation</h3>
 <dl class="fn">
+  <dt>scanApples(S, c)</dt><dd>One pass over apples × snakes: nearest and second nearest apple and reachable count per snake, ownership per player.</dd>
+  <dt>voronoi(S, v)</dt><dd>Flood from all heads on bit rows; apples (and cells) each player reaches first.</dd>
+  <dt>fillFeatures(S, p, c, v, f)</dt><dd>The net's inputs from player p's point of view.</dd>
+  <dt>features(S, p, f)</dt><dd>Scan, flood and fill in one call; used by the export.</dd>
+  <dt>dot8(w, x, n)</dt><dd>Dot product as eight running sums, so it vectorises without fast-math; used for the last layer.</dd>
+  <dt>netReady()</dt><dd>Stores the two weight matrices transposed for the column-form pass.</dd>
+  <dt>netForward(f)</dt><dd>The net: inputs → 96 → 32 → logit.</dd>
+  <dt>loadEmbedded(), dig(c)</dt><dd>Decode the weights packed as text in the submission.</dd>
+  <dt>loadNet(path)</dt><dd>Local builds: weights from a raw float file.</dd>
   <dt>squash(x)</dt><dd>Fast tanh.</dd>
   <dt>evaluate(S, meanDiff, root, own)</dt><dd>The shared value <code>raw</code>, and in <code>own[]</code> each snake's own contribution.</dd>
+</dl>
+<h3>Search</h3>
+<dl class="fn">
   <dt>rnd()</dt><dd>xorshift64, upper 32 bits.</dd>
   <dt>newNode()</dt><dd>Next node of the pool, cleared.</dd>
   <dt>validMask(S, i)</dt><dd>Bit set of the moves of snake i that do not hit a wall or a body.</dd>
