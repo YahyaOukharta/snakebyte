@@ -12,7 +12,8 @@ maps, both seats). Self-play overstates arena gains.
 | v1.1 | per-snake credit in the backup; gravity-aware apple distances with a capped two-slope cost; UCB constant 0.35 → 0.7; support counters + direct falls + branch-free selection (37k → 46k–73k simulated turns per turn) | vs v1.0: +88 −8 =4 real time (+382 ± 119), +88 −10 =2 at 1000 iterations | **30.49** (26.6 at 18%, 27.5 at 33%, 29.3 at 53%); 161 battles: +91 −60 =10 | **11** |
 | v1.2 | path-based reach model (cell + unsupported run); an apple one cell beyond the head's reach counts as reachable; model 64 rows high (20 above the grid); 44 ms from the first input line | vs v1.1: real time +38 −35 =27 (+10 ± 59); 3000 iterations +67, −14 (200 games, +26 ± 44); vs the static model at 1000 iterations +51 ± 45 (200 games) | **32.14**; 159 battles: +87 −49 =23 | **3** |
 | v1.3 | reach tables hold on walls only (an eaten apple was support for ever); Voronoi apple territory at the leaves (flood from the heads on bit rows, bodies block), weight 0.25; value net n0b added to the handcrafted value (72 → 96 → 32 → 1, column-form forward pass); 15 parameters from SPSA; reach table with the apple index innermost | vs v1.2: real time +60 −21 =19 (**+143 ± 66**) | **33.30**; 159 battles: +81 −60 =18 (sZoom +3 −17 =3, _H3R0_ +4 −14 =2, ranks 4–9 +51 −28) | **3** |
-| v1.4 | net n2a on 83 inputs (adds Voronoi apples per side, soft ownership, reachable apples per snake; trained on records re-exported with walls-only tables); distance cost flat near and steep far (0.02 × 6 cells + 0.045 × 20 instead of 0.07 × 11 + 0.015 × 16); reach tables limited to the grid plus a margin, with a 700 ms guard | vs v1.3: real time +54 −21 =25 (**+119 ± 62**), 3000 iterations +96 ± 66 | running | |
+| v1.4 | net n2a on 83 inputs (adds Voronoi apples per side, soft ownership, reachable apples per snake; trained on records re-exported with walls-only tables); distance cost flat near and steep far (0.02 × 6 cells + 0.045 × 20 instead of 0.07 × 11 + 0.015 × 16); reach tables limited to the grid plus a margin, with a 700 ms guard | vs v1.3: real time +54 −21 =25 (**+119 ± 62**), 3000 iterations +96 ± 66 | 31.0 at 33% with 5 timeouts in 35 battles: replaced | |
+| v1.4b | v1.4 with 38 ms per turn instead of 44 | | running | |
 
 ## Measurements
 
@@ -88,6 +89,7 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | 0.02×6 + 0.045×20 again; 0×4 + 0.05×20; 0.02×6 + 0.06×20; 0.02×6 + 0.035×30 | 100 each, 3000 it | +24 (pooled +51 ± 43); −31; −14; +7 |
 | n2a + the new shape (v1.4) vs v1.3 | 100 real time; 100 at 3000 it | **+119 ± 62; +96 ± 66** |
 | Reach tables limited to the grid, 3 columns beside and 14 rows above (table time 70 → 44 ms, 56 → 37 ms) vs the whole model | 100, 3000 it | +24 ± 64: no loss |
+| Gauntlet of v1.4, first seat: vs sZoom / vs _H3R0_ | 15 each | +2 −10 =1 (2 timeouts) / +1 −11 =1 (2 timeouts) |
 
 ## What was learned
 
@@ -237,6 +239,15 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   margin. Limited to the grid plus a margin, and stopped at 700 ms whatever happens.
 - A chained shell line "test && submit" must check the test's result, not its exit
   code: the sanity game timed out and the submit ran anyway.
+
+- **CodinGame's machines stall, and how often depends on the hour.** v1.4 lost 5 of its
+  first 35 arena battles and 4 of 30 gauntlet games on time. In the logs the failing
+  turn is complete: fewer iterations than usual and 61–74 ms on our clock, so the process
+  was frozen for 20–30 ms in the middle of the search and stopped as soon as it ran
+  again. A control with v1.3 at the same hour showed the same rate of stretched turns
+  (13 of 1,178 past 46 ms; in the morning 3 of 3,528): the servers, not the version.
+  The stalls are 2–30 ms, median 8. With a 44 ms budget 18 of 59 ended past 58 ms; with
+  38 ms about 5 would. v1.4b runs at 38 ms.
 
 ## Arena notes
 

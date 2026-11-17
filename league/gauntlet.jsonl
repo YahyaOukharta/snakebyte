@@ -59,3 +59,45 @@
 {"src": "v1.3.cpp", "opp": "6806653", "scores": [14, 19], "ranking": "1 0", "result": 0, "log": "test-922930038.log", "desync": false}
 {"src": "v1.3.cpp", "opp": "6771468", "scores": [35, 37], "ranking": "1 0", "result": 0, "log": "test-922930071.log", "desync": false}
 {"src": "v1.3.cpp", "opp": "6806653", "scores": [23, 25], "ranking": "1 0", "result": 0, "log": "test-922930159.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [20, 23], "ranking": "1 0", "result": 0, "log": "test-923176148.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [30, 27], "ranking": "0 1", "result": 1, "log": "test-923176867.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [27, 28], "ranking": "1 0", "result": 0, "log": "test-923177500.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [11, 50], "ranking": "1 0", "result": 0, "log": "test-923177979.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [27, 27], "ranking": "0 1", "result": 0.5, "log": "test-923178561.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [26, 30], "ranking": "1 0", "result": 0, "log": "test-923179252.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [28, 31], "ranking": "1 0", "result": 0, "log": "test-923179733.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [16, 16], "ranking": "0 1", "result": 0.5, "log": "test-923180279.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [32, 35], "ranking": "1 0", "result": 0, "log": "test-923180857.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [32, 33], "ranking": "1 0", "result": 0, "log": "test-923181308.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [36, 42], "ranking": "1 0", "result": 0, "log": "test-923181921.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [31, 38], "ranking": "1 0", "result": 0, "log": "test-923182627.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [24, 30], "ranking": "1 0", "result": 0, "log": "test-923183219.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [16, 27], "ranking": "1 0", "result": 0, "log": "test-923183647.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": null, "ranking": "1 0", "result": null, "log": "test-923184454.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": null, "ranking": "1 0", "result": null, "log": "test-923184989.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [28, 35], "ranking": "1 0", "result": 0, "log": "test-923185294.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": null, "ranking": "1 0", "result": null, "log": "test-923186238.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": null, "ranking": "1 0", "result": null, "log": "test-923186814.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [26, 33], "ranking": "1 0", "result": 0, "log": "test-923187104.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [40, 34], "ranking": "0 1", "result": 1, "log": "test-923187860.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [36, 44], "ranking": "1 0", "result": 0, "log": "test-923188424.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [27, 25], "ranking": "0 1", "result": 1, "log": "test-923188805.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [36, 54], "ranking": "1 0", "result": 0, "log": "test-923189186.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [34, 39], "ranking": "1 0", "result": 0, "log": "test-923189787.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [28, 34], "ranking": "1 0", "result": 0, "log": "test-923190396.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [26, 30], "ranking": "1 0", "result": 0, "log": "test-923190695.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [37, 39], "ranking": "1 0", "result": 0, "log": "test-923191065.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6771468", "scores": [32, 36], "ranking": "1 0", "result": 0, "log": "test-923191522.log", "desync": false}
+{"src": "v1.4.cpp", "opp": "6806653", "scores": [28, 31], "ranking": "1 0", "result": 0, "log": "test-923191919.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6771468", "scores": [35, 45], "ranking": "1 0", "result": 0, "log": "test-923192379.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6806653", "scores": [34, 42], "ranking": "1 0", "result": 0, "log": "test-923192861.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6771468", "scores": [26, 28], "ranking": "1 0", "result": 0, "log": "test-923193463.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6806653", "scores": [33, 54], "ranking": "1 0", "result": 0, "log": "test-923193923.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6771468", "scores": [32, 25], "ranking": "0 1", "result": 1, "log": "test-923194518.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6806653", "scores": [25, 29], "ranking": "1 0", "result": 0, "log": "test-923195033.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6771468", "scores": [42, 52], "ranking": "1 0", "result": 0, "log": "test-923195668.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6806653", "scores": [22, 24], "ranking": "1 0", "result": 0, "log": "test-923196263.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6771468", "scores": [30, 37], "ranking": "1 0", "result": 0, "log": "test-923196656.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6806653", "scores": [19, 20], "ranking": "1 0", "result": 0, "log": "test-923197190.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6771468", "scores": [33, 33], "ranking": "0 1", "result": 0.5, "log": "test-923197938.log", "desync": false}
+{"src": "v1.3.cpp", "opp": "6806653", "scores": [21, 21], "ranking": "0 1", "result": 0.5, "log": "test-923198428.log", "desync": false}

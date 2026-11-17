@@ -352,7 +352,7 @@ PARAM(D_STEP1, 250);
 PARAM(D_SW, 1000);
 PARAM(D_STEP2, 1000);    // ... then one more ply per D_STEP2 iterations
 PARAM(D_MAX, 40);
-PARAM(TIME_MS, 44);      // per turn, counted from the first input line of the turn
+PARAM(TIME_MS, 38);      // per turn, counted from the first input line of the turn
 PARAM(TIME_FIRST, 850);
 
 // ───────────────────────────── apple distances ─────────────────────────────
