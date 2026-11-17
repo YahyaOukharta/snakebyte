@@ -121,3 +121,23 @@
 {"src": "dump14.cpp", "opp": "6771468", "scores": [13, 23], "ranking": "1 0", "result": 0, "log": "test-923209505.log", "desync": false}
 {"src": "dump14.cpp", "opp": "6771468", "scores": null, "ranking": "1 0", "result": null, "log": "test-923209707.log", "desync": false}
 {"src": "dump14.cpp", "opp": "6771468", "scores": [24, 28], "ranking": "1 0", "result": 0, "log": "test-923209933.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [25, 26], "ranking": "1 0", "result": 0, "log": "test-923231795.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [35, 36], "ranking": "1 0", "result": 0, "log": "test-923232213.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [26, 34], "ranking": "1 0", "result": 0, "log": "test-923232451.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [30, 29], "ranking": "0 1", "result": 1, "log": "test-923232794.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [9, 20], "ranking": "1 0", "result": 0, "log": "test-923233388.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [38, 39], "ranking": "1 0", "result": 0, "log": "test-923233715.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [11, 3], "ranking": "0 1", "result": 1, "log": "test-923234081.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [27, 35], "ranking": "1 0", "result": 0, "log": "test-923234511.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [35, 35], "ranking": "0 1", "result": 0.5, "log": "test-923234875.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [22, 49], "ranking": "1 0", "result": 0, "log": "test-923235285.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [13, 13], "ranking": "0 1", "result": 0.5, "log": "test-923235652.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [35, 33], "ranking": "0 1", "result": 1, "log": "test-923235849.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [34, 34], "ranking": "0 1", "result": 0.5, "log": "test-923236161.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [24, 24], "ranking": "0 1", "result": 0.5, "log": "test-923236416.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [26, 27], "ranking": "1 0", "result": 0, "log": "test-923236665.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [20, 34], "ranking": "1 0", "result": 0, "log": "test-923237095.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [30, 36], "ranking": "1 0", "result": 0, "log": "test-923237493.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [26, 36], "ranking": "1 0", "result": 0, "log": "test-923237802.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [25, 26], "ranking": "1 0", "result": 0, "log": "test-923238068.log", "desync": false}
+{"src": "dump_short.cpp", "opp": "6771468", "scores": [23, 24], "ranking": "1 0", "result": 0, "log": "test-923238411.log", "desync": false}
