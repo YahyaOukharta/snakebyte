@@ -335,6 +335,8 @@ PARAM(EV_ALIVE, 1.39);      // per live snake more than the opponent
 PARAM(EV_UG, 0.0065);         // a snake with no apple in reach: cost per cell to the nearest apple a longer snake could reach
 PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, so the squash stays in its steep part
 PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
+PARAM(EV_BANK, 0);       // per apple I reach at least BANK_M moves before the opponent (or alone): it is mine later anyway
+PARAM(BANK_M, 6);
 PARAM(EV_SOFT, 0);       // soft apple ownership: per apple, tanh((opponent's distance - mine) / SOFT_T)
 PARAM(SOFT_T, 3);        // ... so that getting nearer to a contested apple pays more than to a safe one
 PARAM(SOFT_CAP, 40);     // distance used for "cannot reach"
@@ -536,6 +538,7 @@ struct Scan {
     int cnt[MAXS];               // apples this snake can reach
     int owned[2], contested, unreach;
     float prox[2];               // sum over owned apples of 1 / (1 + distance)
+    int bank[2];                 // apples reached at least BANK_M moves before the opponent
     float soft;                  // sum over apples of softT[opponent's distance - mine] (player 0's view)
 };
 static float softT[129];             // tanh((margin - 64) / SOFT_T)
@@ -555,6 +558,8 @@ static void scanApples(const State &S, Scan &c) {
     c.owned[0] = c.owned[1] = c.contested = c.unreach = 0;
     c.prox[0] = c.prox[1] = 0;
     c.soft = 0;
+    c.bank[0] = c.bank[1] = 0;
+    const int bankM = (int)BANK_M;
     const int cap = (int)SOFT_CAP;
     for (int a = 0; a < nApple0; a++) {
         if (S.occ[appleCell[a]] != APPLE) continue;
@@ -575,6 +580,8 @@ static void scanApples(const State &S, Scan &c) {
                     if (v < c.du[i]) c.du[i] = v;
                 }
         if (m[0] != 255 || m[1] != 255) c.soft += softT[64 + (m[1] < cap ? m[1] : cap) - (m[0] < cap ? m[0] : cap)];
+        if (m[0] + bankM <= m[1]) c.bank[0]++;
+        else if (m[1] + bankM <= m[0]) c.bank[1]++;
         if (m[0] == 255 && m[1] == 255) c.unreach++;
         else if (m[0] == m[1]) c.contested++;
         else {
@@ -720,7 +727,7 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
     }
     Scan c;
     scanApples(S, c);
-    raw += EV_SOFT * c.soft + EV_OWN * (c.owned[0] - c.owned[1]) + EV_ALIVE * (S.alive[0] - S.alive[1]);              // an apple nobody can reach, or a tie, counts for nobody
+    raw += EV_BANK * (c.bank[0] - c.bank[1]) + EV_SOFT * c.soft + EV_OWN * (c.owned[0] - c.owned[1]) + EV_ALIVE * (S.alive[0] - S.alive[1]);              // an apple nobody can reach, or a tie, counts for nobody
     Vor v;
     const bool useNet = netLoaded && NET_A != 0;
     if (EV_VOR != 0 || EV_VORC != 0 || useNet) {
