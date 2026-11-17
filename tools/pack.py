@@ -4,7 +4,8 @@
   pack.py -n tools/nets/n0b.bin -o out/sub.cpp [-D NAME=VALUE ...]
 The net (raw float32: W1 b1 W2 b2 W3 b3) is quantised to 16 bits per weight with one scale
 per array and written as text, three characters per weight. If the result would pass 96,000
-characters, the comments at the end of code lines are removed (CodinGame's limit is 100,000). The output also compiles with
+characters, the comments at the end of code lines are removed, then the comment lines
+(CodinGame's limit is 100,000). The commented source is bot.cpp in the repository. The output also compiles with
 -DLOCAL, so the embedded net can be gated on the local referee.
 """
 import argparse, numpy as np, os, re
@@ -42,6 +43,9 @@ if len(head) + len(src) > 96000:                              # CodinGame takes 
         m = None if l.lstrip().startswith("//") else re.search(r'\s+//(?=(?:[^"]*"[^"]*")*[^"]*$)', l)
         lines.append(l[:m.start()] if m else l)
     src = "\n".join(lines)
+if len(head) + len(src) > 96000:                              # still too long: the comment lines go too (the header stays)
+    lines = src.split("\n")
+    src = "\n".join(l for k, l in enumerate(lines) if k < 5 or not l.lstrip().startswith("//"))
 out = head + src
 open(a.out, "w").write(out)
 print(f"{a.out}: {len(out)} characters ({len(data)} of weights), max quantisation error {worst:.2e}" + ("  OVER 100000" if len(out) > 100000 else ""))

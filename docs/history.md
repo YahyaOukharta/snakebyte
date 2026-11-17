@@ -16,7 +16,8 @@ maps, both seats). Self-play overstates arena gains.
 | v1.4b | v1.4 with 38 ms per turn instead of 44 | | **33.68**; no timeout of ours in the battles checked | **3** |
 | v1.5 | **state merging** in the search (a snake's node is its head cell, facing and depth parity; second depth step 2000 iterations); Voronoi flood capped at 14 steps; speed pass (about 5% on x86); packed source without end-of-line comments | vs v1.4b, real time: −21, +38, +21 (+13 ± 36); the same source with plain trees +28, +42, +24 (+31 ± 37) | **33.61** | **3** |
 | v1.6 | plain trees again (shared states were level over 1,600 real-time games and in the arena); net n3a trained on 120k games played by the v1.4b logic (generation 3; held-out accuracy 85.9%) | vs v1.5, real time, four batches of 50: +28, +78, −21, −92 (**0 ± 43**). Submitted at the user's wish | **33.11**: half a point under v1.4b / v1.5, replaced | 3 |
-| v1.7 | v1.5's source with plain trees and the net n2a again (the net that scored 33.6–33.7); root safety and survival checks in the source, off | | running | |
+| v1.7 | v1.5's source with plain trees and the net n2a again (the net that scored 33.6–33.7); root safety and survival checks in the source, off | | replaced at about 40% of its run (32.3, rank 3) | |
+| v1.8 | **room of each snake** (cells its head reaches in 4 moves, a cost under 8: `EV_SPACE` 1) and **standing on another snake counts as support** when a snake's reach is read (`SNK_SUP`); packed without comment lines | real time vs the same build without them: room +70, +35, −56; support +14, +56, −24, +85 (+33 ± 31); both +45; the packed file vs v1.7 +21 (50 games). Submitted at the user's wish | running | |
 
 ## Measurements
 
@@ -116,6 +117,11 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | On the same set: two-ply worst case against the enemy snakes near (`SAFE` 2); survival of 6 moves with the other bodies fixed (`SAFE_D` 6); both; three and four plies against the nearest enemy | 305 × 4 | 86%; 89%; 86%; 85%; 84% |
 | `SAFE` 3 against the nearest enemy + `SAFE_D` 6 in real-time self-play: counting every loss the enemy can force; counting only what we lose beyond what he pays | 100 each | **−147**; −38 |
 | `SAFE_D` 6 alone, real-time self-play | 200 | −60, +14 |
+| What surrounds our head when it is shut in (32 incidents against the top two / 41 against the rest): two walls; an enemy lying on our body; an enemy directly above the head | — | 97% / 90%; 66% / 54%; 47% / 29% |
+| Cost for a snake without a legal move at the leaf (`EV_TRAP` 1.5 and 3, with and without a share for one move left), real-time self-play | 100 each | +3, −14, −3 |
+| **Standing on another snake counts as support** in `reachIdx` (`SNK_SUP`), real-time self-play | 400 | +14, +56, −24, +85: **+33 ± 31** |
+| **Room of each snake** (`EV_SPACE`): cells its head reaches in 4 moves by a flood of its own; cost × (8 − cells) / 8. Weight 1; 2.5; 1.5 with threshold 12 | 300; 100; 100 | +70, +35, −56; −14; 0 |
+| Both together; the packed v1.8 against v1.7 | 100; 50 | +45; +21 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -430,6 +436,19 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 - **A net that predicts its own games better is not a better net**: n3a, 85.9% on
   generation 3, played level locally and scored 33.11 in the arena against 33.6–33.7 for
   n2a.
+
+- **The trap has a shape.** When one of our snakes is shut in against the top two there are
+  two walls at its head in 97% of the cases (the floor and a wall ahead), an enemy snake
+  is lying on its body in 66% and sits directly above the head in 47%. Their snakes climb
+  onto ours (both treat another snake as something to stand on), ride along by gravity,
+  and ours runs out of floor. We did neither: our reach lookup counted a snake standing on
+  another snake as hanging in the air, and nothing in the evaluation knew how much room a
+  head has.
+- **The per-player Voronoi cannot see a single snake being boxed in** (the user's point):
+  three free team-mates keep the total. The room is per snake: a four-step flood from each
+  head on the rows the Voronoi already builds.
+- The packed source reached 99,719 characters again; `pack.py` now also drops the comment
+  lines when dropping the end-of-line comments is not enough (91.1k).
 
 ## Arena notes
 

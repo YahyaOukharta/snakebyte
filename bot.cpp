@@ -340,6 +340,10 @@ PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, s
 PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
 PARAM(TOGO, 0);           // 1: a node is backed up with what happened from it on (the gains made before it are taken out); for merged nodes, whose visits have different pasts
 PARAM(MERGE, 0);          // state merging: a snake's node is (depth mod MERGE, head cell, facing) whatever path led there; 0 = plain trees. 2 = by parity, 16 = by depth
+PARAM(EV_SPACE, 1);       // cost for a snake whose head has little room: EV_SPACE x (SP_MIN - cells reachable in SP_STEPS moves) / SP_MIN
+PARAM(SP_MIN, 8);
+PARAM(SP_STEPS, 4);
+PARAM(SNK_SUP, 1);        // 1: a part resting on another snake's body counts as supported when the reach of a snake is read (the tables themselves know walls only)
 PARAM(SAFE, 0);           // root safety: plies of worst-case check against the enemy snakes near one of mine (0 = off, 2)
 PARAM(SAFE_R, 5);
 PARAM(SAFE_NE, 2);        // ... at most this many of them (1 allows a deeper check)
@@ -486,6 +490,7 @@ static inline void reachIdx(const State &S, int i, int &l, int &r) {
     for (; j < k.len && j < L - 1; j++) {
         uint8_t v = S.occ[k.part(j) + STRIDE];
         if (v == WALL || v == APPLE) break;
+        if (SNK_SUP != 0 && v >= SNAKE && v != SNAKE + i) break;         // standing on another snake holds too
     }
     r = j;
 }
@@ -526,7 +531,7 @@ static void initGrid() {
         for (int x = 0; x < W; x++)
             if (baseOcc[cellOf(x, y)] < WALL) GRID[y + OY] |= 1ull << (x + OX);
 }
-struct Vor { int ap[2], cells[2]; };
+struct Vor { int ap[2], cells[2]; int space[MAXS]; };   // space: free cells a snake's head reaches in SP_STEPS moves
 static void voronoi(const State &S, Vor &v) {
     enum { R = 36 };                                 // 24 rows, one of padding above, room for a block of four below
     const int n = H, tailSkip = (int)VOR_TAIL;
@@ -553,6 +558,30 @@ static void voronoi(const State &S, Vor &v) {
     for (int a = 0; a < nApple0; a++) {
         int c = appleCell[a];
         if (S.occ[c] == APPLE) ap[(c >> 6) - OY + 1] |= 1ull << (c & 63);
+    }
+    if (EV_SPACE != 0) {                             // each snake's own room: a short flood from its head alone
+        const int steps = (int)SP_STEPS;
+        for (int i = 0; i < NS; i++) {
+            v.space[i] = 99;
+            if (!S.s[i].alive) continue;
+            int c = S.s[i].head(), r = (c >> 6) - OY + 1;
+            if (r < 1 || r > n) continue;
+            uint64_t z[R];
+            int a = r > steps ? r - steps : 1, b = r + steps < n ? r + steps : n;
+            for (int y = a - 1; y <= b + 1; y++) z[y] = 0;
+            z[r] = 1ull << (c & 63);
+            for (int st = 0; st < steps; st++) {
+                uint64_t up = 0;
+                for (int y = a; y <= b; y++) {       // in place, top to bottom: `up` is the row above before this step
+                    uint64_t cu = z[y];
+                    z[y] = cu | ((cu << 1 | cu >> 1 | up | z[y + 1]) & fr[y]);
+                    up = cu;
+                }
+            }
+            int cnt = -1;                            // the head's own cell does not count
+            for (int y = a; y <= b; y++) cnt += __builtin_popcountll(z[y]);
+            v.space[i] = cnt;
+        }
     }
     uint64_t oa[R], ob[R];
     memset(oa, 0, sizeof oa), memset(ob, 0, sizeof ob);
@@ -860,7 +889,7 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
     raw += EV_PROX * (c.prox[0] - c.prox[1]) + EV_BANK * (c.bank[0] - c.bank[1]) + EV_SOFT * c.soft + EV_OWN * (c.owned[0] - c.owned[1]) + EV_ALIVE * (S.alive[0] - S.alive[1]);              // an apple nobody can reach, or a tie, counts for nobody
     Vor v;
     const bool useNet = netLoaded && NET_A != 0;
-    if (EV_VOR != 0 || EV_VORC != 0 || useNet) {
+    if (EV_VOR != 0 || EV_VORC != 0 || useNet || EV_SPACE != 0) {
         voronoi(S, v);
         raw += EV_VOR * (v.ap[0] - v.ap[1]) + EV_VORC * (v.cells[0] - v.cells[1]);
     }
@@ -871,6 +900,7 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
         double dc = dd <= EV_N1 ? EV_S1 * dd : EV_S1 * EV_N1 + EV_S2 * (far < EV_N2 ? far : EV_N2);
         if (c.d1[i] == 255 && EV_UG != 0) dc = EV_S1 * EV_N1 + EV_S2 * EV_N2 - EV_UG * (40 - (c.du[i] < 40 ? c.du[i] : 40));
         if (c.d1[i] == 255) dc += EV_STUCK;
+        if (EV_SPACE != 0 && v.space[i] < SP_MIN) dc += EV_SPACE * (SP_MIN - v.space[i]) / SP_MIN;
         if (EV_TRAP != 0) {
             int free = __builtin_popcount(rawMask(S, i));
             if (free == 0) dc += EV_TRAP;
