@@ -49,17 +49,32 @@ moves", averaged over whatever the others did. That is the approximation Smitsim
 Most apples hang in the air. A snake of length 3 cannot reach one four rows above the
 ground, and a plain BFS distance sends it straight up at it.
 
-After every turn some part of a snake rests on something, so its head is never more than
-(length − 1) cells of free path away from a *supported cell* (a free cell with a wall or an
-apple below). On turn 1:
+The body of a snake lies on the last cells of its head's path, so the snake holds only
+while one of those cells is *supported* (a wall or an apple below it). Along a path, "run"
+counts the cells entered since the last supported one, and a snake of length L holds
+while run ≤ L − 1. The table is a shortest path over states (cell, run):
 
-1. `bfsSupport`: `hsup[c]` = BFS distance from cell c to the nearest supported cell.
-2. `bfsGravity`: for each apple and each length b = 1..16, a BFS from the apple through
-   cells with `hsup ≤ b − 1` only: `gdist[apple][b−1][cell]`, 255 if there is no such path.
+| Step | Run |
+|---|---|
+| into a supported cell | 0 |
+| down | unchanged (hanging or falling: both go down) |
+| sideways or up | + 1, allowed while ≤ L − 1 |
+| sideways at run L − 1 | the snake drops one row: it ends on the cell below |
+| into the apple | always allowed: it is eaten before the fall, and the new part keeps the tail where it was |
 
-A snake of length L reads `gdist[apple][min(L,16)−1][head]`. Supports are the walls and the
-first-turn apples; other snakes as support are ignored, so the table is pessimistic about
-climbing on a team-mate.
+`bfsGravity` runs this backward from each apple, for each length 3..12 (longer snakes use
+12): `gd[apple][L][run][cell]`, one byte, 255 = cannot get there. About 0.5 MB per apple,
+95 ms for a 60-apple map on the laptop, once, on turn 1. At a leaf, `reachIdx` gives the
+snake's length index and its current run (the parts in front of its first supported
+part), and the distance is one lookup per apple.
+
+Two earlier models are in [history.md](history.md): "unsupported run < length, with the
+snake's current stretch charged to every run" (far too pessimistic: −73 to −382) and
+"head within length − 1 of any supported cell" (static; right on average, wrong where the
+body cannot lie on that cell, which left snakes hopping under apples all game).
+
+Supports are the walls and the first-turn apples. Other snakes as support are ignored,
+so climbing on a team-mate is not seen.
 
 ### Per-snake credit
 

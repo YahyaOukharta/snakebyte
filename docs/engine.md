@@ -7,11 +7,12 @@ local referee and the opponent-move detection all run on it.
 ## Board
 
 The real grid is at most 44 × 24, but snakes may leave it: outside is empty space, not wall.
-The model is a 64 × 48 byte array with the grid placed 10 columns from the left and 8 rows
-from the top:
+The model is a 64 × 64 byte array with the grid placed 10 columns from the left and 20 rows
+from the top (v1.0 and v1.1: 48 rows, 8 above; top bots climb higher than that above the
+grid, which showed as desyncs in two arena games):
 
 ```
-cell = (y + 8) * 64 + (x + 10)        x = (cell & 63) - 10      y = (cell >> 6) - 8
+cell = (y + 20) * 64 + (x + 10)       x = (cell & 63) - 10      y = (cell >> 6) - 20
 neighbours: up −64, right +1, down +64, left −1
 ```
 
@@ -23,9 +24,9 @@ neighbours: up −64, right +1, down +64, left −1
 | 3 `VOID` | outer ring of the model: a head that enters it is beheaded; nothing rests on it |
 | 4 + i | body part of snake i |
 
-A stride of 64 makes row = `cell >> 6` and keeps a state small (3,072 bytes of board). The
+A stride of 64 makes row = `cell >> 6` and keeps a state small (4,096 bytes of board). The
 `VOID` ring removes every bounds check. It is the one place the model differs from the
-referee: a snake more than 9 columns outside the grid or 7 rows above it would behead
+referee: a snake more than 9 columns outside the grid or 19 rows above it would behead
 itself in the model and not in the game. The search never wants to go there, and the
 opponent has not in any checked game.
 

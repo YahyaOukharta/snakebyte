@@ -9,7 +9,8 @@ maps, both seats). Self-play overstates arena gains.
 |---|---|---|---|---|
 | legacy | March 2026 submission: per-snake MCTS, depth 6, 32 ms | | 17.91 | 328 / 394 |
 | v1.0 | from scratch: exact engine (0 desyncs), Smitsimax, handcrafted evaluation, 42 ms | vs legacy, real time: +14 −7 in the games legacy finished; legacy crashed in 59 of 80 | 19.0 at 54% (replaced) | ~254 |
-| v1.1 | per-snake credit in the backup; gravity-aware apple distances with a capped two-slope cost; UCB constant 0.35 → 0.7; support counters + direct falls + branch-free selection (37k → 46k–73k simulated turns per turn) | vs v1.0: +88 −8 =4 real time (+382 ± 119), +88 −10 =2 at 1000 iterations | 26.6 at 18%, 27.5 at 33%, 29.3 at 53%, **29.42 at 55%** (still running) | **19** |
+| v1.1 | per-snake credit in the backup; gravity-aware apple distances with a capped two-slope cost; UCB constant 0.35 → 0.7; support counters + direct falls + branch-free selection (37k → 46k–73k simulated turns per turn) | vs v1.0: +88 −8 =4 real time (+382 ± 119), +88 −10 =2 at 1000 iterations | **30.49** (26.6 at 18%, 27.5 at 33%, 29.3 at 53%); 161 battles: +91 −60 =10 | **11** |
+| v1.2 | path-based reach model (cell + unsupported run); an apple one cell beyond the head's reach counts as reachable; model 64 rows high (20 above the grid); 44 ms from the first input line | vs v1.1: real time +38 −35 =27 (+10 ± 59); 3000 iterations +67, −14 (200 games, +26 ± 44); vs the static model at 1000 iterations +51 ± 45 (200 games) | submission 41730845 | |
 
 ## Measurements
 
@@ -43,6 +44,12 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | With credit: UCB 0.4 / 1.1 vs 0.7; `EV_K` 4 / 9; mean share 0; ownership 0 / 0.5; win bonus 1; losses 0.3; elevation 0; second depth step 500 | 100 each | +10 / −14; −24 / −38; −38; −100 / −35; −42; +14; −10; +3 |
 | Two-slope cost 0.12×6 / 0.05×12 vs 0.08×8 | 100 each | −21 / +45 (± 61) |
 
+| Apple reach off by one (the apple cell itself may be one further than the head can stand) vs v1.1-era build | 200, 1000 it | +70, +3 (pooled +36 ± 45) |
+| Path-based reach (`gd[apple][length][run][cell]`) vs the static model with the off-by-one fix | 200, 1000 it | +42, +60 (pooled +51 ± 45) |
+| Model 64 rows instead of 48 vs v1.1 | 100, 1000 it | +56 ± 64 (no regression; it removes desyncs when a snake climbs above the grid) |
+| First value net n0a (72 features → 96 → 32 → 1, 2.7M records of 24k games at 600 iterations; held-out accuracy 78.5%) replacing the shared value, scale 1 / 2 / 4 / 8 | 100 each, 1000 it | −74 / −31 / +28 / −108 |
+| n0a added to the handcrafted value, weight 1 / 2 / 4; half handcrafted + 3 | 100 each | +21 / +42 / −35; +35 (all ± 65) |
+
 ## What was learned
 
 - **Credit assignment was the bottleneck, not speed.** With eight snakes sharing one value,
@@ -72,6 +79,25 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   structure changes in a row inside the noise.
 - Selection was 42% of the search time on CodinGame before it was made branch-free; falls
   47% before the support counters.
+
+- **The static reach model was wrong in two ways**, both found on one arena loss (12–31 on
+  a 28 × 14 map, replayed with board dumps). It called an apple unreachable when it was
+  one cell beyond the head's reach, although the head eats it before the fall and the
+  growth keeps the tail down. And it called a cell reachable when it was near *any*
+  supported cell, although the body has to lie on that cell: a snake spent the whole game
+  hopping under an apple three rows above its head. The path-based model fixes both.
+- **The first "never fall" attempt failed because of its budget, not its idea**: it
+  applied the current stretch of the snake to every later run of the path, so a standing
+  snake (stretched to its full length) saw nothing as reachable.
+- **Arena games are close to coin flips one by one.** Twelve of v1.1's lost battles,
+  replayed with the same code, seat, map and opponent: 9 wins. Replays of single games
+  cannot judge a version; only the margin over many games means anything (v1.1 +31 over
+  those twelve, the v1.2 code +71).
+- **Desyncs in the arena** (one game with 11, one with 1, of 60 losses looked at) came
+  from a snake above the 8 rows the model had over the grid.
+- **A value net on the same information as the handcrafted evaluation adds little.** The
+  first net equals it at best. In the earlier projects the first net saw the raw board;
+  here its inputs are the handcrafted terms.
 
 ## Arena notes
 
