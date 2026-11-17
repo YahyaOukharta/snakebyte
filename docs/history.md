@@ -12,6 +12,7 @@ maps, both seats). Self-play overstates arena gains.
 | v1.1 | per-snake credit in the backup; gravity-aware apple distances with a capped two-slope cost; UCB constant 0.35 → 0.7; support counters + direct falls + branch-free selection (37k → 46k–73k simulated turns per turn) | vs v1.0: +88 −8 =4 real time (+382 ± 119), +88 −10 =2 at 1000 iterations | **30.49** (26.6 at 18%, 27.5 at 33%, 29.3 at 53%); 161 battles: +91 −60 =10 | **11** |
 | v1.2 | path-based reach model (cell + unsupported run); an apple one cell beyond the head's reach counts as reachable; model 64 rows high (20 above the grid); 44 ms from the first input line | vs v1.1: real time +38 −35 =27 (+10 ± 59); 3000 iterations +67, −14 (200 games, +26 ± 44); vs the static model at 1000 iterations +51 ± 45 (200 games) | **32.14**; 159 battles: +87 −49 =23 | **3** |
 | v1.3 | reach tables hold on walls only (an eaten apple was support for ever); Voronoi apple territory at the leaves (flood from the heads on bit rows, bodies block), weight 0.25; value net n0b added to the handcrafted value (72 → 96 → 32 → 1, column-form forward pass); 15 parameters from SPSA; reach table with the apple index innermost | vs v1.2: real time +60 −21 =19 (**+143 ± 66**) | **33.30**; 159 battles: +81 −60 =18 (sZoom +3 −17 =3, _H3R0_ +4 −14 =2, ranks 4–9 +51 −28) | **3** |
+| v1.4 | net n2a on 83 inputs (adds Voronoi apples per side, soft ownership, reachable apples per snake; trained on records re-exported with walls-only tables); distance cost flat near and steep far (0.02 × 6 cells + 0.045 × 20 instead of 0.07 × 11 + 0.015 × 16); reach tables limited to the grid plus a margin, with a 700 ms guard | vs v1.3: real time +54 −21 =25 (**+119 ± 62**), 3000 iterations +96 ± 66 | running | |
 
 ## Measurements
 
@@ -81,6 +82,12 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | n2b: the same with 40% search score in the target; n2a with net weight 3.2 | 100 each, 3000 it | +31; 0 |
 | n2a packed (out/v14.cpp) vs v1.3, **real time on Kaggle**, both accounts | 4 × 200 | +33, +28, +10, +14: pooled **+21 ± 22**; with the 300 local games about +20 ± 19 |
 | Banked apples (`EV_BANK`): an apple I reach 6 moves before the opponent, or alone, counts 0.3 / 0.6; 0.3 with a margin of 3 | 100 each, 3000 it | 0 / **−200**; −63: the snakes postpone eating what is "theirs anyway" |
+| Apple density (`EV_PROX`): sum of 1/(1+distance) over the apples a side is nearest to, weight 0.3 / 0.8; 0.5 with ownership 0.05 | 100 each, 3000 it | −10 / −100; +3 |
+| Kaggle, 400 games each at 3000 iterations, on the n2a build: Voronoi 0.35; flood cap 14; soft ownership 0.2 without the 0/1 term; stuck cost 2; UCB 0.6; Voronoi tail 2 | 400 each | −31; +20; −23; −9; +1; +17 (all ± 31): nothing |
+| **Distance-cost shape** (cost per cell × cells, near part + far part), vs 0.07×11 + 0.015×16: linear 0.03×33; **0.02×6 + 0.045×20**; linear 0.045×22; 0.07×11 + 0.03×16 | 100 each, 3000 it | +35; **+78**; +14; +17 |
+| 0.02×6 + 0.045×20 again; 0×4 + 0.05×20; 0.02×6 + 0.06×20; 0.02×6 + 0.035×30 | 100 each, 3000 it | +24 (pooled +51 ± 43); −31; −14; +7 |
+| n2a + the new shape (v1.4) vs v1.3 | 100 real time; 100 at 3000 it | **+119 ± 62; +96 ± 66** |
+| Reach tables limited to the grid, 3 columns beside and 14 rows above (table time 70 → 44 ms, 56 → 37 ms) vs the whole model | 100, 3000 it | +24 ± 64: no loss |
 
 ## What was learned
 
@@ -210,6 +217,26 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 - **Single-parameter tests at 100 games have stopped telling anything**: after v1.3 the
   same change measures +67 and −70 in two batches. Changes of this size need 400+ games
   or a different kind of evidence (gauntlet, dumps).
+
+- **Where the gap to the top two opens (v1.3, 43 arena games):** level through turn 8,
+  then about 0.07 apples per turn behind from turn 10 to 30 (−0.6 at turn 15, −1.0 at
+  20, −1.7 at 30), with equal body-part losses. Against everybody else the margin stays
+  at zero over the same turns. It is the eating rate on the second wave of apples, the
+  ones further away, not tactics and not the endgame.
+- **The distance cost had its slope in the wrong place.** It was steep for the first 11
+  cells and nearly flat beyond. But the search sees an apple a few moves away by itself;
+  only the evaluation can pull a snake toward one beyond the horizon. Flat near and steep
+  far (0.02 per cell for 6 cells, then 0.045 for 20) is the first shape change in the
+  whole project that the SPSA neighbourhood had not found: it only moves each number a
+  little. Total still about one apple, so eating never lowers the value.
+- **Timeouts are machine stalls, about one game in 150.** Our own clock shows 30 of
+  18,020 arena turns stretched past 46 ms and 14 past 50 ms with a 44 ms budget; v1.3
+  lost one battle that way and its opponents two.
+- **The reach tables took 605 ms on a 44 × 24 map with 72 apples** on a slow CodinGame
+  machine. The search over (cell, run) covered the whole 64 × 64 model, mostly empty
+  margin. Limited to the grid plus a margin, and stopped at 700 ms whatever happens.
+- A chained shell line "test && submit" must check the test's result, not its exit
+  code: the sanity game timed out and the submit ran anyway.
 
 ## Arena notes
 

@@ -319,10 +319,10 @@ PARAM(EV_WIN, 8.69);      // bonus for a decided game
 PARAM(EV_LOSS, 0.057);    // losses difference (the tie-break)
 PARAM(EV_OWN, 0.19);     // apple closer to me than to the opponent
 PARAM(EV_ELEV, 0.04);    // height of the head
-PARAM(EV_S1, 0.0697);      // nearest reachable apple: cost per cell for the first EV_N1 cells ...
-PARAM(EV_N1, 11); 
-PARAM(EV_S2, 0.015);     // ... and per cell for the next EV_N2. The total stays below one apple,
-PARAM(EV_N2, 16);        // so eating the last apple in reach never lowers the evaluation
+PARAM(EV_S1, 0.02);      // nearest reachable apple: cost per cell for the first EV_N1 cells ...
+PARAM(EV_N1, 6); 
+PARAM(EV_S2, 0.045);     // ... and per cell for the next EV_N2. The total stays below one apple,
+PARAM(EV_N2, 20);        // so eating the last apple in reach never lowers the evaluation
 PARAM(EV_SELF, 0.642);     // per-snake credit: weight of the snake's own growth and apple distance in its own tree
 PARAM(POL, 0);           // 1: an unvisited move is tried in order of distance to the nearest apple, 0: at random
 PARAM(POL_EPS, 8);       // one first visit in POL_EPS ignores that order
@@ -335,6 +335,7 @@ PARAM(EV_ALIVE, 1.39);      // per live snake more than the opponent
 PARAM(EV_UG, 0.0065);         // a snake with no apple in reach: cost per cell to the nearest apple a longer snake could reach
 PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, so the squash stays in its steep part
 PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
+PARAM(EV_PROX, 0);       // apple density: sum over the apples a side is nearest to of 1 / (1 + distance)
 PARAM(EV_BANK, 0);       // per apple I reach at least BANK_M moves before the opponent (or alone): it is mine later anyway
 PARAM(BANK_M, 6);
 PARAM(EV_SOFT, 0);       // soft apple ownership: per apple, tanh((opponent's distance - mine) / SOFT_T)
@@ -390,6 +391,15 @@ static void bfsSupport(const uint8_t *occ0) {
 #endif
 }
 
+// Cells the tables cover: the grid, 3 columns beside it and 14 rows above it. Further out
+// a snake is falling out of the game; searching the whole 64x64 model tripled the table time.
+static uint8_t tblBlock[CELLS];
+static void initTblBlock() {
+    for (int c = 0; c < CELLS; c++) {
+        int x = cx(c), y = cy(c);
+        tblBlock[c] = baseOcc[c] >= WALL || x < -3 || x > W + 2 || y < -14 || y > H;
+    }
+}
 static void bfsGravity(int a) {
     static uint32_t q[CELLS * LMAX];
     const int A = appleCell[a];
@@ -402,7 +412,7 @@ static void bfsGravity(int a) {
         for (int r = 0; r < L; r++) D(r * CELLS + A) = 0;
         for (int k = 0; k < 4; k++) {
             int c = A - DELTA[k];
-            if (baseOcc[c] >= WALL) continue;
+            if (tblBlock[c]) continue;
             for (int r = 0; r < L; r++)
                 if (D(r * CELLS + c) == 255) D(r * CELLS + c) = 1, q[qt++] = c << 5 | r;
         }
@@ -419,16 +429,16 @@ static void bfsGravity(int a) {
             };
             for (int k = 0; k < 4; k++) {            // predecessors c with the move c -> n in direction k
                 int c = n - DELTA[k];
-                if (baseOcc[c] >= WALL || c == A) continue;
+                if (tblBlock[c] || c == A) continue;
                 if (sn) { for (int rr = 0; rr < L; rr++) relax(c, rr); }
                 else if (k == 2) relax(c, r);
                 else if (r >= 1) relax(c, r - 1);
             }
             if (sn || r == L - 1) {                  // arrived here by dropping one row after a sideways step
                 int m = n - STRIDE;
-                if (baseOcc[m] < WALL && !supc[m] && m != A) {
-                    if (baseOcc[m - 1] < WALL && m - 1 != A) relax(m - 1, L - 1);
-                    if (baseOcc[m + 1] < WALL && m + 1 != A) relax(m + 1, L - 1);
+                if (!tblBlock[m] && !supc[m] && m != A) {
+                    if (!tblBlock[m - 1] && m - 1 != A) relax(m - 1, L - 1);
+                    if (!tblBlock[m + 1] && m + 1 != A) relax(m + 1, L - 1);
                 }
             }
         }
@@ -451,16 +461,23 @@ static inline void reachIdx(const State &S, int i, int &l, int &r) {
 }
 
 static void initGrid();
+static chrono::steady_clock::time_point tblStart;   // set by main: the tables must not eat the first turn
+static bool tblGuard = false;
 // All distance tables for a new game, from its first position.
 static void initDistances(const State &S) {
     nApple0 = 0;
     for (int c = 0; c < CELLS && nApple0 < MAXA; c++)
         if (S.occ[c] == APPLE) appleCell[nApple0++] = c;
     bfsSupport(S.occ);
+    initTblBlock();
     free(gd);
     gd = (uint8_t *)malloc((size_t)nApple0 * NL * LMAX * CELLS);
     memset(gd, 255, (size_t)nApple0 * NL * LMAX * CELLS);
-    for (int a = 0; a < nApple0; a++) bfsGravity(a);
+    for (int a = 0; a < nApple0; a++) {
+        // out of time on a slow machine: the remaining apples stay "out of reach"
+        if (tblGuard && chrono::duration<double, milli>(chrono::steady_clock::now() - tblStart).count() > 700) break;
+        bfsGravity(a);
+    }
     initGrid();
 }
 
@@ -727,7 +744,7 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
     }
     Scan c;
     scanApples(S, c);
-    raw += EV_BANK * (c.bank[0] - c.bank[1]) + EV_SOFT * c.soft + EV_OWN * (c.owned[0] - c.owned[1]) + EV_ALIVE * (S.alive[0] - S.alive[1]);              // an apple nobody can reach, or a tie, counts for nobody
+    raw += EV_PROX * (c.prox[0] - c.prox[1]) + EV_BANK * (c.bank[0] - c.bank[1]) + EV_SOFT * c.soft + EV_OWN * (c.owned[0] - c.owned[1]) + EV_ALIVE * (S.alive[0] - S.alive[1]);              // an apple nobody can reach, or a tie, counts for nobody
     Vor v;
     const bool useNet = netLoaded && NET_A != 0;
     if (EV_VOR != 0 || EV_VORC != 0 || useNet) {
@@ -1124,6 +1141,7 @@ int main() {
         }
         cur.recount();
         if (turnNo == 0) {
+            tblStart = t0, tblGuard = true;
             initDistances(cur);
             fprintf(stderr, "tables %.0f ms, %d apples, %dx%d\n", chrono::duration<double, milli>(chrono::steady_clock::now() - t0).count(), nApple0, W, H);
         }
