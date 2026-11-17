@@ -10,6 +10,7 @@
 //   referee --export OUT IN...                  records -> features and labels
 //   referee --evalcheck NET RECORDS N           net output of the engine on the first N records
 //   referee --trace FILE                        replay a recorded game, print every position (tools/trace.py)
+//   referee --rail FILE T K BOT [ITERS]         the game up to turn T, then BOT plays our snakes for K turns against his recorded moves
 // Every map is played twice with the seats swapped. -n sets SB_ITERS for both bots
 // (fixed iterations per move); without it the bots use their own clock.
 #define SB_NO_MAIN
@@ -589,6 +590,34 @@ static Result playGame(const Map &m, const char *bot0, const char *bot1, long it
 // Output, one line per position: turn | len0 len1 | losses0 losses1 | apples left | per
 // snake "alive len headx heady nearestAppleX nearestAppleY dist" | apples eaten this turn
 // as "snake:x,y".
+// --rail FILE T K BOT [ITERS]: the recorded game up to turn T, then K turns in which BOT plays
+// our snakes afresh while the opponent's snakes stay on the moves they really played. Not
+// what he would have answered, but it shows whether a build walks into the same trap.
+// Prints "RAIL walls W deaths D lost P len L0->L1" for our side over those K turns.
+static const char *railBot = nullptr;
+static int railFrom = -1, railK = 0;
+static long railIters = 6000;
+static Proc rp;
+static int rw = 0, rd = 0, rl = 0, rlen0 = 0;
+static string frameOf(const State &S, int w, int h) {
+    string ap, sn;
+    int na = 0, live = 0;
+    for (int y = 0; y < h; y++)
+        for (int x = 0; x < w; x++)
+            if (S.occ[cellOf(x, y)] == APPLE) ap += to_string(x) + " " + to_string(y) + "\n", na++;
+    for (int i = 0; i < NS; i++) {
+        if (!S.s[i].alive) continue;
+        live++;
+        sn += to_string(i) + " ";
+        for (int j = 0; j < S.s[i].len; j++) {
+            int c = S.s[i].part(j);
+            if (j) sn += ':';
+            sn += to_string(cx(c)) + "," + to_string(cy(c));
+        }
+        sn += "\n";
+    }
+    return to_string(na) + "\n" + ap + to_string(live) + "\n" + sn;
+}
 static int traceGame(const char *path, int dumpTurn = -1) {
     FILE *fp = fopen(path, "r");
     if (!fp) return 1;
@@ -648,8 +677,8 @@ static int traceGame(const char *path, int dumpTurn = -1) {
             }
             return 0;
         }
-        if (dumpTurn < 0) printf("%d | %d %d | %d %d | %d |", S.turn, S.len[0], S.len[1], S.losses[0], S.losses[1], S.napples);
-        for (int i = 0; i < n && dumpTurn < 0; i++) {
+        if (dumpTurn < 0 && !railBot) printf("%d | %d %d | %d %d | %d |", S.turn, S.len[0], S.len[1], S.losses[0], S.losses[1], S.napples);
+        for (int i = 0; i < n && dumpTurn < 0 && !railBot; i++) {
             const Snake &k = S.s[i];
             if (!k.alive) { printf(" 0 0 0 0 0 0 255"); continue; }
             int l, r, bd = 255, ba = -1;
@@ -659,7 +688,7 @@ static int traceGame(const char *path, int dumpTurn = -1) {
                 if (S.occ[appleCell[a]] == APPLE && row[a] < bd) bd = row[a], ba = a;
             printf(" 1 %d %d %d %d %d %d", k.len, cx(k.head()), cy(k.head()), ba < 0 ? -1 : cx(appleCell[ba]), ba < 0 ? -1 : cy(appleCell[ba]), bd);
         }
-        if (dumpTurn < 0 && getenv("SB_SURV")) {                         // per snake "legalMask/survivingMask" (depth SB_SURV, others fixed)
+        if (dumpTurn < 0 && !railBot && getenv("SB_SURV")) {                         // per snake "legalMask/survivingMask" (depth SB_SURV, others fixed)
             printf(" | S");
             for (int i = 0; i < n; i++) {
                 if (!S.s[i].alive) { printf(" 0/0"); continue; }
@@ -683,12 +712,51 @@ static int traceGame(const char *path, int dumpTurn = -1) {
                 printf(" %d/%d", rm, ok);
             }
         }
-        if (dumpTurn < 0) printf(" |%s\n", eaten.c_str());
-        if (t >= T || S.terminal()) break;
+        if (dumpTurn < 0 && !railBot) printf(" |%s\n", eaten.c_str());
+        if (S.terminal() || (t >= T && !(railBot && t < railFrom + railK))) {
+            if (railBot) printf("RAIL walls %d deaths %d lost %d len %d->%d\n", rw, rd, rl, rlen0, S.len[0]), rp.stop();
+            break;
+        }
         int8_t mv[MAXS];
         eaten.clear();
+        int railMv[MAXS];
+        bool rail = railBot && t >= railFrom && t < railFrom + railK;
+        if (railBot && t == railFrom + railK) {
+            printf("RAIL walls %d deaths %d lost %d len %d->%d\n", rw, rd, rl, rlen0, S.len[0]);
+            rp.stop();
+            return 0;
+        }
+        if (rail) {
+            if (t == railFrom) {
+                rp.start(railBot, railIters, 1, false);
+                string init = "0\n" + to_string(w) + "\n" + to_string(h) + "\n";
+                for (int y = 0; y < h; y++) {
+                    for (int x = 0; x < w; x++) init += baseOcc[cellOf(x, y)] == WALL ? '#' : '.';
+                    init += '\n';
+                }
+                init += to_string(n / 2) + "\n";
+                for (int k = 0; k < n; k++) init += to_string(k) + "\n";
+                rp.send(init);
+                rlen0 = S.len[0];
+            }
+            rp.send(frameOf(S, w, h));
+            string o = rp.line(20000);
+            for (int i = 0; i < n; i++) railMv[i] = -1;
+            size_t pos = 0;
+            while (pos < o.size()) {
+                size_t e = o.find(';', pos);
+                if (e == string::npos) e = o.size();
+                int id;
+                char dir[32];
+                if (sscanf(o.substr(pos, e - pos).c_str(), "%d %31s", &id, dir) == 2 && id >= 0 && id < n / 2)
+                    for (int d = 0; d < 4; d++)
+                        if (!strcmp(dir, DNAME[d])) railMv[id] = d;
+                pos = e + 1;
+            }
+        }
         for (int i = 0, d; i < n; i++) {
-            fscanf(fp, "%d", &d);
+            if (fscanf(fp, "%d", &d) != 1) d = -1;
+            if (rail && i < n / 2) d = railMv[i];
             mv[i] = d < 0 ? S.s[i].facing() : d;
             if (S.s[i].alive && ((mv[i] + 2) & 3) == S.s[i].facing()) mv[i] = S.s[i].facing();   // a backward command is ignored
             if (S.s[i].alive) {
@@ -726,12 +794,25 @@ static int traceGame(const char *path, int dumpTurn = -1) {
         for (int i = 0; i < n; i++)
             if (aliveB[i] && !S.s[i].alive && hits.find(" !" + to_string(i) + ":") == string::npos) hits += " !" + to_string(i) + ":F:-1:" + to_string(lenB[i]);
         eaten += hits;
+        if (rail)
+            for (int i = 0; i < n / 2; i++) {
+                if (!aliveB[i]) continue;
+                size_t q = hits.find(" !" + to_string(i) + ":");
+                if (q != string::npos && hits[q + 4] == 'W') rw++;
+                if (!S.s[i].alive) rd++, rl += lenB[i];
+                else if (q != string::npos) rl++;
+            }
     }
     return 0;
 }
 
 int main(int argc, char **argv) {
     if (argc >= 3 && !strcmp(argv[1], "--trace")) return traceGame(argv[2], argc > 3 ? atoi(argv[3]) : -1);
+    if (argc >= 6 && !strcmp(argv[1], "--rail")) {
+        railFrom = atoi(argv[3]), railK = atoi(argv[4]), railBot = argv[5];
+        if (argc > 6) railIters = atol(argv[6]);
+        return traceGame(argv[2]);
+    }
     signal(SIGPIPE, SIG_IGN);
     if (argc >= 3 && !strcmp(argv[1], "--map")) {
         printMap(makeMap(strtoull(argv[2], 0, 10), argc > 3 ? atoi(argv[3]) : 4));
