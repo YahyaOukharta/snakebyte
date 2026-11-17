@@ -105,6 +105,7 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Merging k = 2 with the slow schedule, on the source without the decided-game rule, real time vs v1.4b (the earlier real-time batches had the rule on) | 300 | −21, +38, +21 (+13 ± 36). Submitted as v1.5 at the user's wish: the arena is to judge it |
 | **Ablation** of what v1.3 and v1.4 shipped as bundles: the current build (plain trees) with one part changed, real time against the full build. Net off; elevation 0.04 → 0.01; win bonus 8.7 → 4; live-snake term off; Voronoi off; value scale, own-credit weight, UCB and ownership back to their values before SPSA; distance cost back to the old shape | 100 each | **−92**; +28; −14; +17; −24; **−70**; +3 |
 | Elevation 0.01 and no live-snake term together, on the v1.5 configuration | 200 | +3, +7 |
+| Merging k = 2 with value-to-go (`TOGO`: a node is backed up without the gains made before it) and the slow schedule, vs plain trees, on Kaggle | 400, 7000 it | +14 ± 30 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -367,6 +368,13 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   win bonus at 8.7 change nothing either way. And the distance-cost shape of v1.4 is
   level with the old one here (+3), although it was +51 at 3,000 iterations: one more
   gain that a fixed-iteration test saw and the real budget does not.
+
+- **The feature export filled the disk.** 120k games at one position in three are 4 GB
+  of float records next to the earlier exports; with no free byte left neither the shell
+  nor the file tools could start, and the user had to free space by hand. The export of
+  generation 3 was redone at one position in eight with four processes (1.4 GB). Old
+  exports are deleted once a net is trained from them: the game records (a few hundred
+  bytes per game) are what is kept.
 
 ## Arena notes
 
