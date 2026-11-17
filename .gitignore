@@ -8,3 +8,4 @@ kaggle/
 data/
 __pycache__/
 .DS_Store
+arena/opponents.txt
