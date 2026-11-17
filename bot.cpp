@@ -339,7 +339,7 @@ PARAM(EV_UG, 0.0065);         // a snake with no apple in reach: cost per cell t
 PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, so the squash stays in its steep part
 PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
 PARAM(TOGO, 0);           // 1: a node is backed up with what happened from it on (the gains made before it are taken out); for merged nodes, whose visits have different pasts
-PARAM(MERGE, 0);          // state merging: a snake's node is (depth mod MERGE, head cell, facing) whatever path led there; 0 = plain trees. 2 = by parity, 16 = by depth
+PARAM(MERGE, 2);          // state merging: a snake's node is (depth mod MERGE, head cell, facing) whatever path led there; 0 = plain trees. 2 = by parity, 16 = by depth
 PARAM(EV_TEAM, 0);        // 1: a snake's distance cost uses the nearest apple it is its side's closest snake to (if any), so team-mates split up
 PARAM(EV_PASS, 0);        // own credit: cost per pass in the line (the head ends where it was: up and fall back)
 PARAM(EV_TEMPO, 0);       // own credit: cost per cell of the snake's mean table distance to its nearest apple over the line (get there sooner)
@@ -365,7 +365,7 @@ PARAM(EV_MEAN, 0.5);     // share of the mean length difference along the line (
 PARAM(D_BASE, 3);        // depth = D_BASE + iterations / D_STEP1 until D_SW iterations ...
 PARAM(D_STEP1, 250);
 PARAM(D_SW, 1000);
-PARAM(D_STEP2, 1000);    // ... then one more ply per D_STEP2 iterations
+PARAM(D_STEP2, 2000);    // ... then one more ply per D_STEP2 iterations
 PARAM(D_MAX, 40);
 PARAM(TIME_MS, 38);      // per turn, counted from the first input line of the turn
 PARAM(TIME_FIRST, 850);

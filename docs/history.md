@@ -103,6 +103,8 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Merging k = 2 at **7000 iterations**: usual schedule; second depth step 2000 (depth 10 instead of 13); plain trees with that schedule | 100–200 each | +3, −28; **+42, +31**; −14 |
 | Merging k = 2 in **real time** vs v1.4b: usual schedule; k = 4; slow schedule (three batches) | 100 each | −10; −74; +14, 0, +17 (pooled +10 ± 35) |
 | Merging k = 2 with the slow schedule, on the source without the decided-game rule, real time vs v1.4b (the earlier real-time batches had the rule on) | 300 | −21, +38, +21 (+13 ± 36). Submitted as v1.5 at the user's wish: the arena is to judge it |
+| **Ablation** of what v1.3 and v1.4 shipped as bundles: the current build (plain trees) with one part changed, real time against the full build. Net off; elevation 0.04 → 0.01; win bonus 8.7 → 4; live-snake term off; Voronoi off; value scale, own-credit weight, UCB and ownership back to their values before SPSA; distance cost back to the old shape | 100 each | **−92**; +28; −14; +17; −24; **−70**; +3 |
+| Elevation 0.01 and no live-snake term together, on the v1.5 configuration | 200 | +3, +7 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -356,6 +358,15 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   behind near the end is back and waits for a fix that does not touch the scale of the
   values. Rule for the gates: a change that goes into the default build is gated in real
   time against the live version, each change on its own, before the next one is added.
+
+- **What carries the weight (ablation, real time).** The net (−92 without it, more than
+  the +20 it showed when it was added: it has since been retrained on truthful inputs)
+  and the four search and credit values from the SPSA run (−70). The handcrafted
+  Voronoi term is worth little on top of the net, which has the Voronoi counts as
+  inputs (−24). Passengers: the elevation bonus at 0.04, the live-snake term and the
+  win bonus at 8.7 change nothing either way. And the distance-cost shape of v1.4 is
+  level with the old one here (+3), although it was +51 at 3,000 iterations: one more
+  gain that a fixed-iteration test saw and the real budget does not.
 
 ## Arena notes
 
