@@ -57,6 +57,14 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Gradient for a snake with nothing in reach (`EV_UG` 0.004); live-snake term (`EV_ALIVE` 1) | 100 each | +21 / 0 |
 | Values measured from the root's evaluation (`CENTER`): without net; with net; with `EV_K` 3 / 10; `EV_K` 4 + UCB 1.0; net weight 1 | 100 each | +14; −42; −3 / −31; −35; −38 |
 
+| SPSA over 15 parameters with the n0b hybrid (250 batches of 16 games at 1000 iterations). End point: UCB 0.735, `EV_K` 8.55, `EV_WIN` 8.69, `EV_SELF` 0.64, `EV_OWN` 0.19, `EV_ELEV` 0.04, `EV_ALIVE` 1.39, `NET_A` 2.18, cost 0.07×11 + 0.015×16. Tuned vs defaults, both with the net | 100, 1000 it | +10 ± 60 |
+| Tuned n0b hybrid vs v1.2 at equal iterations | 100, 3000 it | **+111 ± 64** |
+| Tuned n0b hybrid vs v1.2, **real time** on the laptop (4 / 2 games at a time) | 100 each | +53 / +14 (± 61) |
+| Net forward pass in column form (see below): the net's cost falls from 54% to 12% of a simulated turn (696 no net, 1071 before, 781 ns after). Tuned hybrid vs v1.2, real time | 100 | +14 ± 65 |
+| The same with the budgets of CodinGame: 7000 iterations vs 7800 for v1.2 | 100 | +17 ± 58. Pooled with the three real-time batches: +24 ± 31 over 400 games |
+| Reach tables for lengths up to 20 instead of 12 (tables 100 → 305 ms) | 100, 3000 it | −7 ± 63 |
+| **Bit-row engine** (`tools/experiments/bitboard_engine.cpp`): apples, the union of snakes and every snake as one 64-bit word per row, the body stored minus an offset so a fall is one addition. 40 games identical to the byte board. Laptop: 708 vs 700 ns per simulated turn. CodinGame, same game replayed twice each: 398k / 762k simulated turns in the first 850 ms against 665k / 1013k | — | slower on x86: not kept |
+
 ## What was learned
 
 - **Credit assignment was the bottleneck, not speed.** With eight snakes sharing one value,
@@ -125,6 +133,30 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   a new generation.
 - A wait loop written as `while pgrep -f "referee --gen"` matches itself and never ends:
   use `pgrep -x referee`.
+
+- **The simulation is spent on falling snakes.** Counted on two positions: 95–98% of
+  simulated turns have at least one snake in the air, 2.5–4.3 snakes per turn, and almost
+  all of them really drop (by one row on average): in the trees the snakes climb at
+  random and come down again. So the fall code is the common path, not the exception.
+- **"ns per sim" is per simulated turn**, all snakes together (`sims += depth`). At
+  700 ns for about seven snakes a snake costs ~100 ns per turn: 30 for the selection, 60
+  for a fall. On CodinGame the bot simulates 40–60k turns, about 350k snake moves, per
+  44 ms.
+- **Bit rows did not beat the byte board.** A fall became a few word operations per row
+  the snake spans instead of four passes over its parts, yet the total did not move on
+  the laptop and got worse on CodinGame: the byte board's per-part loops are short and
+  the bit version pays on every move (two boards to update, an offset on every body
+  read, a search for the owner of a cell).
+- **A dot product per output unit is the slow way to run the net without -ffast-math.**
+  Written as "for each input, add input × its column to the whole layer" every inner loop
+  is a plain `y += a·x`, which the compiler vectorises as it is, and inputs that are zero
+  (empty snake slots, units off after the ReLU) are skipped. 4.4× faster for the same
+  outputs (checked against the training-side values).
+- **The laptop in real time is about as fast as CodinGame** (7k iterations per turn on
+  both), so a local real-time batch is a fair picture of the arena budget.
+- **Gains of the evaluation shrink with depth**: the tuned hybrid is +111 at 3000
+  iterations and about +20 at 7000. The same was seen for the start depth.
+- zsh does not split `$VAR` into words: build option lists with `eval` or arrays.
 
 ## Arena notes
 

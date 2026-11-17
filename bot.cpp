@@ -358,12 +358,17 @@ static uint8_t baseOcc[CELLS];           // walls and VOID only
 //   sideways at run L - 1             -> the snake drops one row: it ends on the cell below
 //   step into the apple               -> always allowed: it is eaten before the fall, and the
 //                                        new part keeps the tail where it was
-// gd[apple][L][run][cell] = moves from (cell, run) to the apple for a snake of length L
+// gd[L][run][cell][apple] = moves from (cell, run) to the apple for a snake of length L
 // (3..12, longer snakes use 12), 255 if it cannot get there. Backward BFS from the apple.
-enum { LMIN = 3, LMAX = 12, NL = LMAX - LMIN + 1 };
+// The apple index is the innermost one: a leaf asks for every apple from one (L, run,
+// cell), and that way the answers sit next to each other in memory.
+#ifndef LMAX_
+#define LMAX_ 12
+#endif
+enum { LMIN = 3, LMAX = LMAX_, NL = LMAX - LMIN + 1 };
 static uint8_t *gd;
 static uint8_t supc[CELLS];      // cell is free and has a wall or a first-turn apple below
-static inline uint8_t *GD(int a, int l, int r) { return gd + (((size_t)a * NL + l) * LMAX + r) * CELLS; }
+static inline uint8_t *GDROW(int l, int r, int c) { return gd + (((size_t)l * LMAX + r) * CELLS + c) * nApple0; }
 
 static void bfsSupport(const uint8_t *occ0) {
     for (int c = 0; c < CELLS; c++)
@@ -375,26 +380,27 @@ static void bfsGravity(int a) {
     const int A = appleCell[a];
     for (int l = 0; l < NL; l++) {
         const int L = l + LMIN;
-        uint8_t *D = GD(a, l, 0);                    // D[r * CELLS + c]
-        memset(D, 255, (size_t)LMAX * CELLS);
+        uint8_t *base = GDROW(l, 0, 0) + a;          // entry (r, c) is base[(r * CELLS + c) * nApple0]
+        const size_t st = nApple0;
+#define D(i) base[(size_t)(i) * st]
         int qh = 0, qt = 0;
-        for (int r = 0; r < L; r++) D[r * CELLS + A] = 0;
+        for (int r = 0; r < L; r++) D(r * CELLS + A) = 0;
         for (int k = 0; k < 4; k++) {
             int c = A - DELTA[k];
             if (baseOcc[c] >= WALL) continue;
             for (int r = 0; r < L; r++)
-                if (D[r * CELLS + c] == 255) D[r * CELLS + c] = 1, q[qt++] = c << 4 | r;
+                if (D(r * CELLS + c) == 255) D(r * CELLS + c) = 1, q[qt++] = c << 5 | r;
         }
         while (qh < qt) {
-            int n = q[qh] >> 4, r = q[qh] & 15;
+            int n = q[qh] >> 5, r = q[qh] & 31;
             qh++;
-            int d = D[r * CELLS + n];
+            int d = D(r * CELLS + n);
             if (d >= 250) continue;
             bool sn = supc[n];
             if (sn && r) continue;                   // a supported cell is only ever entered with run 0
             auto relax = [&](int c, int rr) {
-                uint8_t &x = D[rr * CELLS + c];
-                if (x == 255) x = d + 1, q[qt++] = c << 4 | rr;
+                uint8_t &x = D(rr * CELLS + c);
+                if (x == 255) x = d + 1, q[qt++] = c << 5 | rr;
             };
             for (int k = 0; k < 4; k++) {            // predecessors c with the move c -> n in direction k
                 int c = n - DELTA[k];
@@ -411,6 +417,7 @@ static void bfsGravity(int a) {
                 }
             }
         }
+#undef D
     }
 }
 
@@ -436,6 +443,7 @@ static void initDistances(const State &S) {
     bfsSupport(S.occ);
     free(gd);
     gd = (uint8_t *)malloc((size_t)nApple0 * NL * LMAX * CELLS);
+    memset(gd, 255, (size_t)nApple0 * NL * LMAX * CELLS);
     for (int a = 0; a < nApple0; a++) bfsGravity(a);
 }
 
@@ -454,10 +462,14 @@ struct Scan {
     float prox[2];               // sum over owned apples of 1 / (1 + distance)
 };
 static void scanApples(const State &S, Scan &c) {
-    int rl[MAXS], rr[MAXS];
+    const uint8_t *row[MAXS], *rowU[MAXS];                   // each snake's distances to all apples
     for (int i = 0; i < NS; i++) {
-        c.d1[i] = c.d2[i] = c.du[i] = 255, c.own[i] = 0, rl[i] = rr[i] = 0;
-        if (S.s[i].alive) reachIdx(S, i, rl[i], rr[i]);
+        c.d1[i] = c.d2[i] = c.du[i] = 255, c.own[i] = 0;
+        if (!S.s[i].alive) continue;
+        int l, r;
+        reachIdx(S, i, l, r);
+        row[i] = GDROW(l, r, S.s[i].head());
+        rowU[i] = GDROW(NL - 1, 0, S.s[i].head());
     }
     c.owned[0] = c.owned[1] = c.contested = c.unreach = 0;
     c.prox[0] = c.prox[1] = 0;
@@ -466,7 +478,7 @@ static void scanApples(const State &S, Scan &c) {
         int m[2] = {255, 255}, im[2] = {0, 0};
         for (int i = 0; i < NS; i++) {
             if (!S.s[i].alive) continue;
-            int v = GD(a, rl[i], rr[i])[S.s[i].head()];
+            int v = row[i][a];
             if (v < c.d1[i]) c.d2[i] = c.d1[i], c.d1[i] = v;
             else if (v < c.d2[i]) c.d2[i] = v;
             int o = OWNER[i];
@@ -475,7 +487,7 @@ static void scanApples(const State &S, Scan &c) {
         if (EV_UG != 0)
             for (int i = 0; i < NS; i++)
                 if (S.s[i].alive) {
-                    int v = GD(a, NL - 1, 0)[S.s[i].head()];
+                    int v = rowU[i][a];
                     if (v < c.du[i]) c.du[i] = v;
                 }
         if (m[0] == 255 && m[1] == 255) c.unreach++;
@@ -541,16 +553,34 @@ static inline float dot8(const float *w, const float *x, int n) {
         for (int t = 0; t < 8; t++) acc[t] += w[k + t] * x[k + t];
     return ((acc[0] + acc[1]) + (acc[2] + acc[3])) + ((acc[4] + acc[5]) + (acc[6] + acc[7]));
 }
+// Column form: h += x[k] * W[:, k]. Each inner loop is a plain "y += a * x" over a whole
+// layer, which vectorises without -ffast-math, and an input that is zero (an empty snake
+// slot, a unit switched off by the ReLU) costs nothing.
+alignas(32) static float NW1T[NF][NH1], NW2T[NH1][NH2];
+static void netReady() {
+    for (int j = 0; j < NH1; j++)
+        for (int k = 0; k < NF; k++) NW1T[k][j] = NW1[j][k];
+    for (int j = 0; j < NH2; j++)
+        for (int k = 0; k < NH1; k++) NW2T[k][j] = NW2[j][k];
+    netLoaded = true;
+}
 static float netForward(const float *f) {
-    float h1[NH1], h2[NH2];
-    for (int j = 0; j < NH1; j++) {
-        float a = NB1[j] + dot8(NW1[j], f, NF);
-        h1[j] = a > 0 ? a : 0;
+    alignas(32) float h1[NH1], h2[NH2];
+    memcpy(h1, NB1, sizeof h1);
+    for (int k = 0; k < NF; k++) {
+        float x = f[k];
+        if (x == 0) continue;
+        const float *w = NW1T[k];
+        for (int j = 0; j < NH1; j++) h1[j] += x * w[j];
     }
-    for (int j = 0; j < NH2; j++) {
-        float a = NB2[j] + dot8(NW2[j], h1, NH1);
-        h2[j] = a > 0 ? a : 0;
+    memcpy(h2, NB2, sizeof h2);
+    for (int k = 0; k < NH1; k++) {
+        float x = h1[k];
+        if (x <= 0) continue;
+        const float *w = NW2T[k];
+        for (int j = 0; j < NH2; j++) h2[j] += x * w[j];
     }
+    for (int j = 0; j < NH2; j++) h2[j] = h2[j] > 0 ? h2[j] : 0;
     return NB3 + dot8(NW3, h2, NH2);
 }
 #ifdef NETW_DATA
@@ -566,7 +596,7 @@ static void loadEmbedded() {
     for (int a = 0; a < 6; a++)
         for (int i = 0; i < cnt[a]; i++, p += 3)
             arr[a][i] = ((dig(p[0]) << 12 | dig(p[1]) << 6 | dig(p[2])) - 32768) * sc[a];
-    netLoaded = true;
+    netReady();
 }
 #endif
 #ifdef LOCAL
@@ -577,7 +607,7 @@ static void loadNet(const char *path) {                      // raw float32: W1 
                fread(NW3, 4, NH2, fp) + fread(&NB3, 4, 1, fp);
     fclose(fp);
     if (n != NH1 * NF + NH1 + NH2 * NH1 + NH2 + NH2 + 1) { fprintf(stderr, "bad net %s\n", path); exit(1); }
-    netLoaded = true;
+    netReady();
 }
 #endif
 
@@ -761,8 +791,10 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         reachIdx(root, i, l, r);
         for (int a = 0; a < nApple0; a++) {
             if (root.occ[appleCell[a]] != APPLE) continue;
-            const uint8_t *g = GD(a, l, 0);
-            for (int c = 0; c < CELLS; c++) F[c] = g[c] < F[c] ? g[c] : F[c];
+            for (int c = 0; c < CELLS; c++) {
+                uint8_t g = GDROW(l, 0, c)[a];
+                F[c] = g < F[c] ? g : F[c];
+            }
         }
     }
     for (;;) {
@@ -1056,7 +1088,7 @@ int main() {
                 int bd = 255, ba = -1, l, r;
                 reachIdx(cur, i, l, r);
                 for (int a = 0; a < nApple0; a++)
-                    if (cur.occ[appleCell[a]] == APPLE && GD(a, l, r)[cur.s[i].head()] < bd) bd = GD(a, l, r)[cur.s[i].head()], ba = a;
+                    if (cur.occ[appleCell[a]] == APPLE && GDROW(l, r, cur.s[i].head())[a] < bd) bd = GDROW(l, r, cur.s[i].head())[a], ba = a;
                 fprintf(stderr, " snake %d%s len %d head %d,%d run %d -> apple %d,%d dist %d\n", CGID[i], OWNER[i] ? "'" : "", cur.s[i].len,
                         cx(cur.s[i].head()), cy(cur.s[i].head()), r, ba < 0 ? -1 : cx(appleCell[ba]), ba < 0 ? -1 : cy(appleCell[ba]), bd);
             }
