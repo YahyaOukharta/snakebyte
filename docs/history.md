@@ -76,6 +76,9 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Soft apple ownership (`EV_SOFT`): per apple tanh((opponent's distance − mine) / 3) instead of the 0/1 ownership, weight 0.2 / 0.4; 0.2 on top of it; 0.3 with scale 6 | 100 each, 3000 it | +49 / −42; −38; −7: off |
 | Root safety (`THREAT`): my snakes do not enter a cell an enemy head can enter this turn, except apple cells / including them | 100 each, 3000 it | −56 / −78: off |
 | Gauntlet of v1.3, first seat: vs sZoom / vs _H3R0_ | 15 each | +2 −11 =2 / +2 −10 =3 (before: +0 −15 / +4 −11 =1); most losses now by 1–3 points |
+| Unreachable gradient again, now with walls-only tables (`EV_UG` 0.005 / 0.02), handcrafted only | 100 each, 2000 it | 0 / −78 |
+| Net n2a on inputs v2 (83: + Voronoi apples per side, soft ownership, reachable apples per snake; 4.0M records of the generation 1–2 games re-exported with walls-only tables; held-out accuracy 81.1%) vs v1.3 | 200 at 3000 it + 100 real time | +42, +10; +3 (pooled +18 ± 37) |
+| n2b: the same with 40% search score in the target; n2a with net weight 3.2 | 100 each, 3000 it | +31; 0 |
 
 ## What was learned
 
