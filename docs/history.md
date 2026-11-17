@@ -14,6 +14,7 @@ maps, both seats). Self-play overstates arena gains.
 | v1.3 | reach tables hold on walls only (an eaten apple was support for ever); Voronoi apple territory at the leaves (flood from the heads on bit rows, bodies block), weight 0.25; value net n0b added to the handcrafted value (72 → 96 → 32 → 1, column-form forward pass); 15 parameters from SPSA; reach table with the apple index innermost | vs v1.2: real time +60 −21 =19 (**+143 ± 66**) | **33.30**; 159 battles: +81 −60 =18 (sZoom +3 −17 =3, _H3R0_ +4 −14 =2, ranks 4–9 +51 −28) | **3** |
 | v1.4 | net n2a on 83 inputs (adds Voronoi apples per side, soft ownership, reachable apples per snake; trained on records re-exported with walls-only tables); distance cost flat near and steep far (0.02 × 6 cells + 0.045 × 20 instead of 0.07 × 11 + 0.015 × 16); reach tables limited to the grid plus a margin, with a 700 ms guard | vs v1.3: real time +54 −21 =25 (**+119 ± 62**), 3000 iterations +96 ± 66 | 31.0 at 33% with 5 timeouts in 35 battles: replaced | |
 | v1.4b | v1.4 with 38 ms per turn instead of 44 | | **33.68**; no timeout of ours in the battles checked | **3** |
+| v1.5 | **state merging** in the search (a snake's node is its head cell, facing and depth parity; second depth step 2000 iterations); Voronoi flood capped at 14 steps; speed pass (about 5% on x86); packed source without end-of-line comments | vs v1.4b, real time: −21, +38, +21 (+13 ± 36); the same source with plain trees +28, +42, +24 (+31 ± 37) | running | |
 
 ## Measurements
 
@@ -101,6 +102,7 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Merging k = 2 with a deeper schedule (second step 400); UCB 1.1; start depth 6 | 100 each, 3000 it | +14; +35; −28 |
 | Merging k = 2 at **7000 iterations**: usual schedule; second depth step 2000 (depth 10 instead of 13); plain trees with that schedule | 100–200 each | +3, −28; **+42, +31**; −14 |
 | Merging k = 2 in **real time** vs v1.4b: usual schedule; k = 4; slow schedule (three batches) | 100 each | −10; −74; +14, 0, +17 (pooled +10 ± 35) |
+| Merging k = 2 with the slow schedule, on the source without the decided-game rule, real time vs v1.4b (the earlier real-time batches had the rule on) | 300 | −21, +38, +21 (+13 ± 36). Submitted as v1.5 at the user's wish: the arena is to judge it |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
