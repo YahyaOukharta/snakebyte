@@ -778,6 +778,13 @@ static int traceGame(const char *path, int dumpTurn = -1) {
                 if (!S.s[i].alive || __builtin_popcount(rawMask(S, i)) < 2) continue;    // only real choices
                 int side = i >= n / 2;
                 agN[side]++, agA[side] += out[i] == mv[i];
+                if (getenv("SB_AGDUMP")) {            // one line per decision: what each move does to the distance to the nearest apple
+                    int l, r;
+                    reachIdx(S, i, l, r);
+                    auto near = [&](int c) { int b = 255; for (int a = 0; a < nApple0; a++) if (S.occ[appleCell[a]] == APPLE && GDROW(l, 0, c)[a] < b) b = GDROW(l, 0, c)[a]; return b; };
+                    int hd = S.s[i].head();
+                    printf("D %d %d %d %d %d %d %d %d %d\n", side, S.turn, S.s[i].len, mv[i], out[i], near(hd), near(hd + DELTA[mv[i]]), near(hd + DELTA[out[i]]), S.napples);
+                }
             }
         }
         int lenB[MAXS], nhd[MAXS];

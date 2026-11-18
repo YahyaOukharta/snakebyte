@@ -14,9 +14,10 @@ from concurrent.futures import ThreadPoolExecutor
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
-def score(params, opp="_H3R0_", every=3, iters=2000, net=None, mx=10**9, subs=None):
+def score(params, opp="_H3R0_", every=3, iters=2000, net=None, mx=10**9, subs=None, part=(0.0, 1.0)):
     rows = [json.loads(l) for l in open(os.path.join(ROOT, "arena", "traces", "index.jsonl"))]
     games = [r["game_id"] for r in rows if r["opponent"] in opp.split(",") and not r["mismatch"] and (not subs or r["submission"] in subs)][-mx:]
+    games = games[int(part[0] * len(games)):int(part[1] * len(games))]          # a slice of the games: tune on one, check on another
     env = {**os.environ}
     if net: env["SB_NET"] = net
     for k, v in params.items(): env["SB_" + k] = str(v)

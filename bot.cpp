@@ -340,6 +340,8 @@ PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, s
 PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
 PARAM(TOGO, 0);           // 1: a node is backed up with what happened from it on (the gains made before it are taken out); for merged nodes, whose visits have different pasts
 PARAM(MERGE, 0);          // state merging: a snake's node is (depth mod MERGE, head cell, facing) whatever path led there; 0 = plain trees. 2 = by parity, 16 = by depth
+PARAM(EV_HEAD, 0);        // head threat: cost x (3 - distance to the nearest enemy head) when that is under 3; HEAD_MODE 2: only against a snake at least as long, a bonus against a shorter one
+PARAM(HEAD_MODE, 1);
 PARAM(EV_SPACE, 1);       // cost for a snake whose head has little room: EV_SPACE x (SP_MIN - cells reachable in SP_STEPS moves) / SP_MIN
 PARAM(SP_MIN, 8);
 PARAM(SP_STEPS, 4);
@@ -352,7 +354,7 @@ PARAM(EV_TRAP, 0);        // cost for a snake with no legal move at the leaf (it
 PARAM(TRAP1, 0);
 PARAM(EV_TEAM, 0);        // 1: a snake's distance cost uses the nearest apple it is its side's closest snake to (if any), so team-mates split up
 PARAM(EV_PASS, 0);        // own credit: cost per pass in the line (the head ends where it was: up and fall back)
-PARAM(EV_TEMPO, 0);       // own credit: cost per cell of the snake's mean table distance to its nearest apple over the line (get there sooner)
+PARAM(EV_TEMPO, 0.1);       // own credit: cost per cell of the snake's mean table distance to its nearest apple over the line (get there sooner)
 PARAM(DECIDED, 0);        // 1: a lead larger than the apples left gets the win bonus before the end, so the loser gains nothing by not finishing
 PARAM(WIN_SMOOTH, 0);     // share of the win bonus given before the end, as tanh(lead / WIN_T) x (apples eaten / apples at the start)^2: no cliff at the last apple
 PARAM(WIN_T, 2);
@@ -900,6 +902,18 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
         double dc = dd <= EV_N1 ? EV_S1 * dd : EV_S1 * EV_N1 + EV_S2 * (far < EV_N2 ? far : EV_N2);
         if (c.d1[i] == 255 && EV_UG != 0) dc = EV_S1 * EV_N1 + EV_S2 * EV_N2 - EV_UG * (40 - (c.du[i] < 40 ? c.du[i] : 40));
         if (c.d1[i] == 255) dc += EV_STUCK;
+        if (EV_HEAD != 0) {
+            int best = 99, bl = 0;
+            for (int j = 0; j < NS; j++) {
+                if (!S.s[j].alive || OWNER[j] == OWNER[i]) continue;
+                int d = abs(cx(S.s[j].head()) - cx(S.s[i].head())) + abs(cy(S.s[j].head()) - cy(S.s[i].head()));
+                if (d < best) best = d, bl = S.s[j].len;
+            }
+            if (best < 3) {
+                double t = EV_HEAD * (3 - best);
+                dc += HEAD_MODE == 2 && S.s[i].len > bl ? -t : t;
+            }
+        }
         if (EV_SPACE != 0 && v.space[i] < SP_MIN) dc += EV_SPACE * (SP_MIN - v.space[i]) / SP_MIN;
         if (EV_TRAP != 0) {
             int free = __builtin_popcount(rawMask(S, i));

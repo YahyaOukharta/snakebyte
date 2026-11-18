@@ -1,0 +1,86 @@
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.03}, "agree": 0.6219382321618744}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.06}, "agree": 0.6199148029818956}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.15}, "agree": 0.6223642172523962}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "NET_A": 1.0}, "agree": 0.6271565495207668}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "NET_A": 1.4}, "agree": 0.6241746538871139}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "NET_A": 1.8}, "agree": 0.6255591054313099}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "NET_A": 2.6}, "agree": 0.6228966986155484}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 7}, "agree": 0.6170394036208733}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 10}, "agree": 0.6216187433439829}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 12}, "agree": 0.6321618743343983}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15}, "agree": 0.6389776357827476}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_OWN": 0}, "agree": 0.629073482428115}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_OWN": 0.1}, "agree": 0.6306709265175718}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_OWN": 0.3}, "agree": 0.6298189563365282}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_VOR": 0.15}, "agree": 0.6321618743343983}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_VOR": 0.35}, "agree": 0.6284345047923323}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_SPACE": 0.5}, "agree": 0.6313099041533546}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_SPACE": 1.5}, "agree": 0.6309904153354633}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "UCB_C": 0.6}, "agree": 0.6323748668796592}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "UCB_C": 0.9}, "agree": 0.6306709265175718}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_MEAN": 0.35}, "agree": 0.6308839190628328}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_MEAN": 0.65}, "agree": 0.6303514376996805}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_SELF": 0.45}, "agree": 0.6325878594249201}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_SELF": 0.85}, "agree": 0.6308839190628328}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_ELEV": 0.02}, "agree": 0.6256656017039404}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_ELEV": 0.07}, "agree": 0.6354632587859425}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_ALIVE": 0.7}, "agree": 0.6332268370607029}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_ALIVE": 2.2}, "agree": 0.629073482428115}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_S2": 0.035}, "agree": 0.6308839190628328}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_S2": 0.055}, "agree": 0.6319488817891373}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_S1": 0.01}, "agree": 0.6293929712460063}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_S1": 0.035}, "agree": 0.6305644302449415}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_WIN": 5}, "agree": 0.6337593184238551}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_WIN": 13}, "agree": 0.6363152289669861}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_LOSS": 0.02}, "agree": 0.6266240681576145}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_LOSS": 0.12}, "agree": 0.6293929712460063}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "SP_MIN": 6}, "agree": 0.6274760383386582}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "SP_MIN": 10}, "agree": 0.6366347177848776}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "EV_TRAP": 0.5}, "agree": 0.6300319488817892}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.03, "EV_K": 15}, "agree": 0.6319488817891373}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.06, "EV_K": 15}, "agree": 0.6274760383386582}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.15, "EV_K": 15}, "agree": 0.6313099041533546}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0}, "agree": 0.6414270500532482}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.4}, "agree": 0.6376996805111821}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.8}, "agree": 0.6346112886048988}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 2.6}, "agree": 0.629286474973376}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 7, "NET_A": 1.0}, "agree": 0.6281150159744409}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 10, "NET_A": 1.0}, "agree": 0.633013844515442}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 12, "NET_A": 1.0}, "agree": 0.6383386581469649}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_OWN": 0}, "agree": 0.633013844515442}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_OWN": 0.1}, "agree": 0.6357827476038339}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_OWN": 0.3}, "agree": 0.6324813631522896}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_VOR": 0.15}, "agree": 0.6385516506922257}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_VOR": 0.35}, "agree": 0.6371671991480298}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_SPACE": 0.5}, "agree": 0.6375931842385516}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_SPACE": 1.5}, "agree": 0.6284345047923323}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "UCB_C": 0.6}, "agree": 0.6376996805111821}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "UCB_C": 0.9}, "agree": 0.6325878594249201}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35}, "agree": 0.6429179978700745}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.65}, "agree": 0.6346112886048988}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_SELF": 0.45}, "agree": 0.6391906283280085}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_SELF": 0.85}, "agree": 0.6349307774227902}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_ELEV": 0.02}, "agree": 0.6308839190628328}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_ELEV": 0.07}, "agree": 0.6390841320553781}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_ALIVE": 0.7}, "agree": 0.6382321618743344}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_ALIVE": 2.2}, "agree": 0.6395101171458999}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_S2": 0.035}, "agree": 0.631842385516507}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_S2": 0.055}, "agree": 0.6395101171458999}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_S1": 0.01}, "agree": 0.6370607028753994}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_S1": 0.035}, "agree": 0.6370607028753994}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_WIN": 5}, "agree": 0.6408945686900959}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_WIN": 13}, "agree": 0.6412140575079872}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_LOSS": 0.02}, "agree": 0.6369542066027689}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_LOSS": 0.12}, "agree": 0.6339723109691161}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "SP_MIN": 6}, "agree": 0.6368477103301384}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "SP_MIN": 10}, "agree": 0.6345047923322684}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15, "NET_A": 1.0, "EV_MEAN": 0.35, "EV_TRAP": 0.5}, "agree": 0.6363152289669861}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.06, "EV_K": 15.0, "NET_A": 1.0, "EV_MEAN": 0.35}, "agree": 0.6410010649627264}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.15, "EV_K": 15.0, "NET_A": 1.0, "EV_MEAN": 0.35}, "agree": 0.6367412140575079}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.22, "EV_K": 15.0, "NET_A": 1.0, "EV_MEAN": 0.35}, "agree": 0.6264110756123535}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.3, "EV_K": 15.0, "NET_A": 1.0, "EV_MEAN": 0.35}, "agree": 0.6171458998935038}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 11, "NET_A": 1.0, "EV_MEAN": 0.35}, "agree": 0.6306709265175718}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 20, "NET_A": 1.0, "EV_MEAN": 0.35}, "agree": 0.6383386581469649}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 26, "NET_A": 1.0, "EV_MEAN": 0.35}, "agree": 0.6322683706070288}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15.0, "NET_A": 0.6, "EV_MEAN": 0.35}, "agree": 0.6358892438764643}
+{"opp": "_H3R0_", "params": {"EV_TEMPO": 0.1, "EV_K": 15.0, "NET_A": 0.8, "EV_MEAN": 0.35}, "agree": 0.6376996805111821}
