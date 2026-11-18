@@ -125,6 +125,11 @@ svg .mut { fill: var(--muted); }
     <li class="sub"><a href="#net-fwd">Forward pass</a></li>
     <li class="sub"><a href="#net-train">Data and training</a></li>
     <li class="sub"><a href="#net-pack">Packing</a></li>
+    <li><a href="#learn">Learning from the top players</a></li>
+    <li class="sub"><a href="#replay">Replaying real games</a></li>
+    <li class="sub"><a href="#agree">Agreement</a></li>
+    <li class="sub"><a href="#prefs">Move preferences</a></li>
+    <li class="sub"><a href="#prior">The prior in the search</a></li>
     <li><a href="#tuning">Tuning: SPSA</a></li>
     <li><a href="#protocol">Protocol and resync</a></li>
     <li><a href="#speed">Speed</a></li>
@@ -139,17 +144,17 @@ svg .mut { fill: var(--muted); }
 <main>
 <header class="top">
   <h1>How the SnakeByte bot works, piece by piece</h1>
-  <p class="lede">A walk through <code>bot.cpp</code> and its tools as of v1.3: the simulator, the search, the evaluation, the value net, the tuning and the way every change is measured, with the numbers found along the way.</p>
+  <p class="lede">A walk through <code>bot.cpp</code> and its tools as of v1.11 / v1.13: the simulator, the search, the evaluation, the value net, what was learned from the top players' own games, and the way every change is measured, with the numbers found along the way.</p>
 </header>
 
 <section id="overview">
 <div class="stats">
-  <div class="stat"><b>328 → 3</b><span>Legend rank of 394, legacy bot → v1.3</span></div>
-  <div class="stat"><b>33.30</b><span>arena score, from 17.91</span></div>
-  <div class="stat"><b>40k–60k</b><span>simulated turns per 44 ms turn on CodinGame (all snakes moved)</span></div>
-  <div class="stat"><b>0</b><span>simulator mismatches since the board model was made 64 rows high</span></div>
+  <div class="stat"><b>328 → 3</b><span>Legend rank of 394, legacy bot → v1.11</span></div>
+  <div class="stat"><b>36.04</b><span>arena score (35.54 on a second run), from 17.91; the first two are at 38.3</span></div>
+  <div class="stat"><b>40k–60k</b><span>simulated turns per 38 ms turn on CodinGame (all snakes moved)</span></div>
+  <div class="stat"><b>1,848</b><span>arena games replayed exactly from their seed and moves</span></div>
 </div>
-<p>The bot is one C++ file of about 1,250 lines; the submission adds the net's weights as text, 84k characters in all. This page follows the data through it, then the tools around it:</p>
+<p>The bot is one C++ file of about 1,900 lines with its local tools; the submission is that file without the tools and comments plus the net's weights as text, 93k characters. This page follows the data through it, then the tools around it:</p>
 <figure>
 <svg viewBox="0 0 760 150" role="img" aria-label="Pipeline: input, state, search with evaluation, output">
   <g fill="none" stroke="var(--line)" stroke-width="1.5">
@@ -444,7 +449,8 @@ play, for each of my snakes, the most visited move at its root;</code></pre>
   <li><b>Progressive depth.</b> The first iterations are shallow (depth 3), so every snake's first moves get sampled before anything deep is tried. By the end of a turn the depth is 11–14. The schedule is the one in _H3R0_'s post-mortem. Starting deeper looked like +135 Elo at 1,000 iterations per move and was −3 in real time: depth must be tested at the real budget.</li>
   <li><b>There is no rollout.</b> The whole line is inside the trees; below the last node of a tree the snake's first visit is a random valid move. The line stops at <code>depth</code> and the evaluation takes over.</li>
   <li><b>The clock</b> is read every 16 iterations, not every one: reading it costs about as much as a quarter of an iteration.</li>
-  <li><b>Budget.</b> 44 ms counted from the first input line of the turn, 850 ms on the first turn (the reach tables take 100–180 ms of it).</li>
+  <li><b>Budget.</b> 38 ms counted from the first input line of the turn, 850 ms on the first turn (the reach tables take 30–200 ms of it and stop at 700 ms whatever happens). It was 44 ms until CodinGame's machines started freezing the process for 2–30 ms in the middle of a turn: five of 35 battles were lost on time in one evening, with the same code that had lost one in 159 that morning.</li>
+  <li><b>A prior on the moves.</b> Since v1.10 the selection adds a bias that fades with the visits of a move; it comes from the top players' own games and has <a href="#learn">its own section</a>.</li>
   <li><b>Exploration constant 0.735.</b> 0.35 → 0.7 was +61 Elo; the last digits are from the SPSA run.</li>
 </ul>
 
@@ -474,10 +480,12 @@ node.w[m] += val[i];                              <span class="c">// each tree g
 <tr><td>Voronoi apples</td><td class="num">0.25 / apple</td><td>apples my flood reaches first minus theirs (below)</td></tr>
 <tr><td>distance to the nearest reachable apple, per snake</td><td class="num">≤ 1.0</td><td>0.07 per cell for the first 11 cells, 0.015 for the next 16, then flat</td></tr>
 <tr><td>live snakes</td><td class="num">1.39 / snake</td><td>from the SPSA run; it was 0 before</td></tr>
+<tr><td>room of each snake (v1.8)</td><td class="num">≤ 1</td><td>cells its head reaches in 4 moves by a flood of its own; a cost when under 8. The per-player Voronoi cannot see one snake being boxed in while its team-mates are free</td></tr>
+<tr><td>tempo, in a snake's own credit (v1.9)</td><td class="num">0.1 / cell</td><td>the mean table distance to its nearest apple over the simulated line: getting there sooner counts. Found by <a href="#agree">agreement</a>: the top players go straight where our search wandered</td></tr>
 <tr><td>losses difference</td><td class="num">0.057</td><td>the tie-break</td></tr>
 <tr><td>head elevation</td><td class="num">0.04 / row</td><td>higher is slightly better: most apples hang in the air</td></tr>
 <tr><td>finished game</td><td class="num">± 8.7</td><td>added to the length difference, by score then losses</td></tr>
-<tr><td>value net</td><td class="num">2.18 × logit</td><td>added to all of the above (next section)</td></tr>
+<tr><td>value net</td><td class="num">2.18 × logit</td><td>added to all of the above (next section). The largest single part: −92 Elo without it</td></tr>
 </tbody></table></div>
 <div class="note warn"><b>The distance cost must stay near one apple.</b> When a snake eats the last apple it can reach, its "nearest apple" jumps to something far away or out of reach. If that jump costs more than the apple was worth, the evaluation goes <em>down</em> for eating, and the snake refuses to eat. Larger distance weights lost for exactly this reason (−89 Elo at 0.2 per cell) until the cost was capped.</div>
 
@@ -510,6 +518,7 @@ node.w[m] += val[i];                              <span class="c">// each tree g
   <li><b>Size.</b> apples × 10 lengths × 12 runs × 4,096 cells: 22 MB for 46 apples, built in 100–180 ms on CodinGame's first turn.</li>
   <li><b>Three models were tried before this one.</b> "Never fall, and charge the snake's current stretch to every run" (−73 to −382: a standing snake saw nothing as reachable). "Head within L − 1 of any supported cell" (static; wrong where the body cannot lie on that cell, which left snakes hopping under apples all game). The path model beat it by +51 ± 45.</li>
 </ul>
+<div class="note"><b>Standing on another snake counts (v1.8).</b> When a snake's place in the tables is read (<code>reachIdx</code>), a part resting on another snake's body ends the run like a wall does. Both top bots treat snakes this way; ours used to count such a snake as hanging in the air.</div>
 <div class="note warn"><b>Only walls are support in the tables (v1.3).</b> Until v1.2 the apples of the first turn counted too. But the tables are built once, and an apple is gone when it is eaten: the table kept walking over a support that no longer existed. In a lost game against sZoom a length-3 snake in a pit was told for 80 turns that an apple was 9 moves away. In the simulation itself apples still hold snakes up, exactly as in the game; only the precomputed distances ignore them.</div>
 
 <h3 id="scan">One pass over apples × snakes: <code>scanApples</code></h3>
@@ -588,10 +597,72 @@ out = b3 + dot(W3, relu(h2));</code></pre>
 <tr><td>n0b</td><td>the same, retrained on the path-based reach inputs</td><td class="num"></td><td>+85 ± 45 at equal iterations (200 games)</td></tr>
 <tr><td>n1a, n1b</td><td>5.0M records, 2,000 iterations</td><td class="num">80.4%</td><td>+14 / +17 over n0b: inside the noise</td></tr>
 </tbody></table></div>
-<p>Three times the data from a deeper teacher bought almost nothing: with inputs that are the handcrafted quantities, the net can only improve how they are combined. That is why the next net gets new inputs, not more games.</p>
+<p>Three times the data from a deeper teacher bought almost nothing: with inputs that are the handcrafted quantities, the net can only improve how they are combined.</p>
+<p>What came after, in order:</p>
+<div class="wide"><table>
+<thead><tr><th>Net</th><th>What changed</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>n2a (v1.4–v1.11)</td><td>83 inputs: + Voronoi apples per side, soft ownership, reachable apples per snake; records re-exported with walls-only tables</td><td>81.1% held out; about +20 in real time; the net that carried 33.7 → 36.0</td></tr>
+<tr><td>n3a</td><td>120,000 fresh games played by the v1.4 logic</td><td>85.9% on its own games, level in every gate, 33.11 in the arena against 33.7: a net that predicts its own games better is not a better net</td></tr>
+<tr><td>board windows</td><td>a 9 × 9 window of the raw board around each head, a learned vector per cell and content, next to the 83 inputs</td><td>85.39% → 85.53%: the hand-made inputs already carry it. Not built</td></tr>
+<tr><td>n4c (v1.13)</td><td>self-play + the 1,848 replayed arena games three times + the 331 games against the top two five more times</td><td>+28 ± 15 over 1,600 Kaggle games: the first net that has seen how games against real opponents end</td></tr>
+</tbody></table></div>
 
 <h3 id="net-pack">Packing into the source (<code>pack.py</code>)</h3>
 <p>The submission must be one text file under 100k characters. Each weight is quantised to 16 bits with one scale per array and written as three characters of six bits each, starting at <code>'0'</code>. Two characters of that range would break a C string, the backslash and the question mark (trigraphs), so they are replaced by <code>{</code> and <code>|</code> and mapped back by <code>dig()</code>. 10,145 weights are 30,435 characters; the largest rounding error is 3·10⁻⁵. The packed file still compiles with <code>-DLOCAL</code>, so the exact text that goes to CodinGame is what plays the local gate.</p>
+</section>
+
+<section id="learn">
+<h2>Learning from the top players</h2>
+<p>By v1.8 everything measurable in self-play had been taken: six changes in a row came out level, and against sZoom and _H3R0_ we still won one game in five. Two things were missing, and neither was code: a way to measure against the players who beat us, and any knowledge of what they do differently. Both came from the same place, the logs of our own arena games.</p>
+
+<h3 id="replay">Replaying real games exactly</h3>
+<p>A battle log holds the seed of the game and every move of both players, but not the map. Our local map generator is a port with its own random numbers. The official generator, seeded the way CodinGame's SDK seeds it (<code>SecureRandom</code> with the SHA1PRNG algorithm and <code>setSeed(seed)</code>), gives the identical map:</p>
+<pre><code>tools/mapdump   <span class="c">// 50 lines of Java around the referee's own GridMaker</span>
+tools/trace.py  <span class="c">// seed -> first position; + both players' moves -> every position, through our engine</span>
+tools/harvest.py <span class="c">// all logged battles; each replay is checked against the score line our bot printed every turn</span></code></pre>
+<p>1,848 of about 1,900 logged battles replay with no turn disagreeing. Every move sZoom and _H3R0_ made against us is a position on disk, and any turn of any game can be written out as a test position (<code>trace.py LOG --pos T</code>).</p>
+<p>What the replays showed first, by counting (<code>tools/losses.py</code>): head-on collisions are symmetric, two a game for both sides. The difference against the top two was walls: a snake only hits a wall when it has no legal move, and ours did 0.40 times a game against them (they 0.12), losing a whole snake that way in 12% of those games.</p>
+
+<h3 id="agree">Agreement: does our search pick the move they played?</h3>
+<p><code>tools/agree.py</code> runs our search on the positions of <em>their</em> snakes and compares its move with the one they really made, on 14,000 decisions per player in 17 seconds. With the weights of v1.8 it agreed with _H3R0_ 60.6% of the time.</p>
+<ul>
+  <li>It behaves like a real measure: on its own it prefers the settings matches had already picked (the room cost at 1, the Voronoi at 0.25, the tuned value scale) and rejects the ones matches had rejected.</li>
+  <li>It found the <b>tempo credit</b>: +1.4 points, the largest mover among thirty switches. A quarter of all disagreements were his snake going toward its apple where ours picked a move that went away from it. Neutral in self-play, which is why it had been off; v1.9 finished at 33.75, then the best score.</li>
+  <li>It is not a quantity to maximise. A coordinate ascent of all weights on it gained three points of agreement, lost 90 Elo in self-play and lost to the unfitted build against _H3R0_'s own bot. One idea at a time, yes; the whole evaluation, no.</li>
+</ul>
+
+<h3 id="prefs">What a move is like when they pick it</h3>
+<p>For every real decision each legal move is described by a few facts, and a softmax over the legal moves is fitted to the move that was played (<code>tools/prefs.py</code>). The same fit on our own moves shows the difference:</p>
+<div class="wide"><table>
+<thead><tr><th>What the move does</th><th class="num">_H3R0_</th><th class="num">sZoom</th><th class="num">us</th></tr></thead>
+<tbody>
+<tr><td>goes to a cell from which the snake reaches no apple</td><td class="num">−1.10</td><td class="num">−1.20</td><td class="num">+0.21</td></tr>
+<tr><td>second-nearest apple is far behind the first</td><td class="num">−0.55</td><td class="num">−0.71</td><td class="num">−0.15</td></tr>
+<tr><td>each cell further from the nearest apple</td><td class="num">−0.38</td><td class="num">−0.53</td><td class="num">−0.24</td></tr>
+<tr><td>an enemy head is next to the target cell</td><td class="num">+0.01</td><td class="num">−0.53</td><td class="num">−0.86</td></tr>
+<tr><td>keeps going straight</td><td class="num">+0.44</td><td class="num">+0.53</td><td class="num">+0.20</td></tr>
+<tr><td>target cell rests on a wall or apple</td><td class="num">+0.99</td><td class="num">+1.40</td><td class="num">+0.78</td></tr>
+</tbody></table></div>
+<p>Sixteen such facts predict sZoom's move 67.5% of the time, more often than our whole search did. They avoid dead zones, head for clusters, keep their direction; and _H3R0_ does not avoid a cell because one of our heads is next to it, while we avoided his.</p>
+
+<h3 id="prior">The prior in the search</h3>
+<p>These are preferences about a move, not about a position ten turns later: as evaluation terms at the leaves they changed nothing. They belong in the selection:</p>
+<pre><code>q[m] = mean value of m  +  C·sqrt(ln N / n[m])  +  <span class="k">bias[m] · K / (K + n[m])</span>        <span class="c">// K = 100</span></code></pre>
+<ul>
+  <li><b>At the root (v1.10)</b>, for every snake, ours and theirs: <code>bias = 0.05 × (score of the move − mean score)</code>, the score from the sixteen facts (<code>movePrefs</code>). For their snakes it is a model of the opponent learned from his real play.</li>
+  <li><b>At every node (v1.11)</b>: the facts that need no scan (the change of table distance, target on a supported cell, straight on, up or down), weight 0.15. A few table lookups per node.</li>
+  <li><b>Not as virtual visits.</b> Giving each move 100 imaginary visits takes the exploration away and costs agreement even with no prior at all; a bias that fades with the real visits does not.</li>
+</ul>
+<div class="wide"><table>
+<thead><tr><th>Version</th><th>Self-play (Kaggle, real time)</th><th class="num">Arena</th></tr></thead>
+<tbody>
+<tr><td>v1.9: tempo credit</td><td>+7 ± 22</td><td class="num">33.75</td></tr>
+<tr><td>v1.10: root prior</td><td>−10, −13: slightly <em>negative</em></td><td class="num">34.25</td></tr>
+<tr><td>v1.11: prior at every node</td><td>+63 ± 31 at weight 0.15</td><td class="num">36.04, then 35.54</td></tr>
+</tbody></table></div>
+<div class="note"><b>The first gain self-play could not have found.</b> The root prior is how the top players move; against a copy of ourselves it is worth nothing or less, and in the arena half a point. With the in-tree prior v1.11 won 73% of its battles, and against _H3R0_ five games in fourteen where it had been one in five. Wall hits against the top two fell from 0.45 to 0.14 a game.</div>
+<div class="note warn"><b>And one the gates got wrong the other way.</b> "Straight on" for a vertical snake is up, and up is falling back: with the priors the share of pass moves went from 18% to 40%. Charging a pass in the root prior was positive in seven Kaggle gates (2,800 games) and v1.12 finished 1.1 below v1.11 in the arena. Since then a change to the prior is one submission, and the arena is the judge.</div>
 </section>
 
 <section id="tuning">
@@ -739,15 +810,22 @@ right pit: the mirror image, their Y (length 4) below, our B (length 3) beside</
 <section id="versions">
 <h2>Versions</h2>
 <div class="wide"><table>
-<thead><tr><th>Version</th><th>What changed</th><th>Local gate</th><th class="num">Arena</th><th class="num">Rank</th></tr></thead>
+<thead><tr><th>Version</th><th>What changed</th><th class="num">Arena</th><th class="num">Rank</th></tr></thead>
 <tbody>
-<tr><td>legacy</td><td>the March 2026 contest bot: per-snake MCTS, depth 6</td><td></td><td class="num">17.91</td><td class="num">328</td></tr>
-<tr><td>v1.0</td><td>from scratch: exact engine, Smitsimax, plain evaluation</td><td>+14 −7 in the games legacy finished</td><td class="num">19.0 (at 54%)</td><td class="num">~254</td></tr>
-<tr><td>v1.1</td><td>per-snake credit, gravity-aware distances with a capped cost, UCB 0.7, faster engine</td><td>+382 ± 119 vs v1.0</td><td class="num">30.49</td><td class="num">11</td></tr>
-<tr><td>v1.2</td><td>path-based reach model, apple one cell beyond reach, board model 64 rows</td><td>+26 ± 44 vs v1.1</td><td class="num">32.14</td><td class="num">3</td></tr>
-<tr><td>v1.3</td><td>walls-only reach tables, Voronoi apple territory, value net n0b, SPSA parameters</td><td>+143 ± 66 vs v1.2</td><td class="num">33.30</td><td class="num">3</td></tr>
+<tr><td>legacy</td><td>the March 2026 contest bot: per-snake MCTS, depth 6</td><td class="num">17.91</td><td class="num">328</td></tr>
+<tr><td>v1.0</td><td>from scratch: exact engine, Smitsimax, plain evaluation</td><td class="num">19.0</td><td class="num">~254</td></tr>
+<tr><td>v1.1</td><td>per-snake credit, gravity-aware distances, UCB 0.7, faster engine</td><td class="num">30.49</td><td class="num">11</td></tr>
+<tr><td>v1.2</td><td>path-based reach model, board model 64 rows</td><td class="num">32.14</td><td class="num">3</td></tr>
+<tr><td>v1.3</td><td>walls-only reach tables, Voronoi apple territory, value net, SPSA parameters</td><td class="num">33.30</td><td class="num">3</td></tr>
+<tr><td>v1.4b</td><td>net on 83 inputs, 38 ms per turn (machine stalls)</td><td class="num">33.68</td><td class="num">3</td></tr>
+<tr><td>v1.5 – v1.8</td><td>shared states in the tree, a net on fresh games, room per snake, snakes as support: all level (33.1–33.6)</td><td class="num">33.1–33.6</td><td class="num">3</td></tr>
+<tr><td>v1.9</td><td>tempo credit</td><td class="num">33.75</td><td class="num">3</td></tr>
+<tr><td>v1.10</td><td>root prior fitted on the top players' moves</td><td class="num">34.25</td><td class="num">3</td></tr>
+<tr><td>v1.11</td><td>the prior at every node of the tree</td><td class="num">36.04 / 35.54</td><td class="num">3</td></tr>
+<tr><td>v1.12</td><td>pass charge in the prior</td><td class="num">34.95, reverted</td><td class="num">3</td></tr>
+<tr><td>v1.13</td><td>value net trained with the replayed arena games</td><td class="num">running</td><td class="num"></td></tr>
 </tbody></table></div>
-<p>v1.3's 159 arena battles: +81 −60 =18. Against ranks 4–9: blasterpoard +12 −6, RamzaBeoulve +10 −5, delineate +9 −4, marwar22 +6 −1, ram_trains_2026 +8 −7, frictionless +6 −5. Against sZoom +3 −17 =3 and _H3R0_ +4 −14 =2: the first two (37.3 and 36.9) are still four points clear, and most of those losses are now by one to three apples.</p>
+<p>Leaderboard on 2026-11-18: sZoom 38.69, _H3R0_ 38.37, us 35.5–36.0, fourth 31.9. The evening before the gap to the first was 4.6 points.</p>
 </section>
 
 <section id="failed">
@@ -772,6 +850,14 @@ right pit: the mirror image, their Y (length 4) below, our B (length 3) beside</
 <tr><td>Soft ownership: tanh of the distance margin per apple, four variants</td><td class="num">+49, −42, −38, −7</td><td>noise</td></tr>
 <tr><td>Root safety: never enter a cell an enemy head can enter</td><td class="num">−56, −78</td><td>a snake that always yields is pushed around</td></tr>
 <tr><td>Bit-row engine</td><td class="num">same play, slower on x86</td><td>see Speed</td></tr>
+<tr><td>Shared states in the tree (a node = head cell, facing, depth parity)</td><td class="num">+45 at 3,000 iterations; −6 ± 15 in real time (1,600 games); level in the arena</td><td>what a change is worth at 3,000 iterations says little about 7,000</td></tr>
+<tr><td>"Decided game" rule against stalling when behind</td><td class="num">−55 in real time</td><td>the bonus moved every value into the flat part of the squash; caught only when the whole source was gated against the live version</td></tr>
+<tr><td>Net on 120,000 fresh self-play games; board windows as inputs</td><td class="num">level; 33.11 in the arena</td><td></td></tr>
+<tr><td>Root safety: worst case against the nearest enemy; survival of six moves</td><td class="num">−28 to −147 in self-play</td><td>halves the damage on replayed traps, costs too much elsewhere</td></tr>
+<tr><td>All weights fitted to the top players' moves</td><td class="num">−90 in self-play, worse against _H3R0_'s bot</td><td>agreement is a microscope, not a target</td></tr>
+<tr><td>An opponent on rails (his recorded moves) as a strength test</td><td class="num">ranks the weakest version first</td><td>an opponent who does not answer rewards greed</td></tr>
+<tr><td>Pass charge in the prior</td><td class="num">+3 to +33 in seven gates; −1.1 in the arena</td><td></td></tr>
+<tr><td>Hand-written AVX2 for the flood, the scan and the net</td><td class="num">+2%, 0, 0</td><td>GCC had already vectorised them</td></tr>
 </tbody></table></div>
 <p>After v1.3 the same single change measured +67 in one batch and −70 in the next. Effects of that size need 400 or more games, or a different kind of evidence: the gauntlet, the arena logs, a dump of one lost game.</p>
 </section>
