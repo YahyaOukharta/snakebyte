@@ -354,6 +354,8 @@ PARAM(PRIOR_T3, 0);       // the in-tree prior before the endgame takes the weig
 PARAM(PRIOR_TL, 0);       // the in-tree prior takes its weights from the endgame fit with at most PH_A apples left
 PARAM(LAST_AP, 0);        // root: my snakes do not eat the last apple when the game would end lost
 PARAM(OPP_POL, 0);        // share of the enemy snakes' moves in the tree drawn from the fitted preferences in place of their own UCB choice
+PARAM(FPU_ON, 0);         // first-play urgency: an untried move starts at the node's mean value + FPU instead of being tried at once
+PARAM(FPU, 0);
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
 PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
 PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
@@ -1046,6 +1048,12 @@ static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t
     if (bias)                                                // a prior on the moves that fades as they are visited: bias x bn / (bn + n)
         q = _mm_add_ps(q, _mm_div_ps(_mm_mul_ps(_mm_loadu_ps(bias), _mm_set1_ps(bn)), _mm_add_ps(_mm_set1_ps(bn), n)));
     __m128 jit = _mm_add_ps(_mm_set1_ps(1e6f), _mm_cvtepi32_ps(_mm_set_epi32(p3, p2, p1, p0)));
+    if (FPU_ON && nd.N > 0) {                                // first-play urgency: an untried move is worth the node's mean so far plus FPU, not infinity
+        float sw = nd.w[0] + nd.w[1] + nd.w[2] + nd.w[3];
+        __m128 fp = _mm_add_ps(_mm_set1_ps(sign * sw / (float)nd.N + (float)FPU), _mm_mul_ps(_mm_cvtepi32_ps(_mm_set_epi32(p3, p2, p1, p0)), _mm_set1_ps(1e-7f)));
+        if (bias) fp = _mm_add_ps(fp, _mm_loadu_ps(bias));
+        jit = fp;
+    }
     q = _mm_blendv_ps(q, jit, _mm_cmpeq_ps(n, _mm_setzero_ps()));
     q = _mm_blendv_ps(_mm_set1_ps(-1e9f), q, maskTab[mask]);
     __m128 m = _mm_max_ps(q, _mm_shuffle_ps(q, q, _MM_SHUFFLE(1, 0, 3, 2)));
@@ -1053,11 +1061,13 @@ static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t
     return __builtin_ctz(_mm_movemask_ps(_mm_cmpeq_ps(q, m)));
 #else
     const int pr[4] = {p0, p1, p2, p3};
+    const bool fpu = FPU_ON && nd.N > 0;
+    const float fp0 = fpu ? sign * (nd.w[0] + nd.w[1] + nd.w[2] + nd.w[3]) / (float)nd.N + (float)FPU : 0;
     float bestV = -2e9f;
     int best = 0;
     for (int d = 0; d < 4; d++) {
         float q = !(mask >> d & 1) ? -1e9f
-                  : nd.n[d] == 0 ? 1e6f + (float)pr[d]
+                  : nd.n[d] == 0 ? (fpu ? fp0 + (float)pr[d] * 1e-7f + (bias ? bias[d] : 0) : 1e6f + (float)pr[d])
                   : sign * nd.w[d] / nd.n[d] + e / sqrtf(nd.n[d]) + (bias ? bias[d] * bn / (bn + nd.n[d]) : 0);
         if (q > bestV) bestV = q, best = d;
     }
