@@ -350,6 +350,7 @@ PARAM(THREAT_E, 0);       // ... and only against enemy snakes longer than this
 PARAM(NEAR_M, 0);         // tempo credit and in-tree prior: apples an enemy snake reaches this many moves sooner are not targets (0 = off)
 PARAM(PRIOR_PH, 0);        // root prior by phase: 1 = endgame weights with at most PH_A apples left, 2 = also the pre-endgame fit before
 PARAM(PH_A, 6);
+PARAM(PRIOR_TL, 0);       // the in-tree prior takes its weights from the endgame fit with at most PH_A apples left
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
 PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
 PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
@@ -1461,6 +1462,8 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         }
     const bool tempo = EV_TEMPO != 0, passOn = EV_PASS != 0, togo = TOGO != 0, priorT = PRIOR_T != 0;
     const float pT = (float)PRIOR_T;
+    const bool lateT = PRIOR_TL != 0 && root.napples <= PH_A;   // in-tree weights from the endgame fit
+    const float kD = lateT ? -0.32f : -0.46f, kSup = lateT ? 1.09f : 1.2f, kUp = lateT ? -0.25f : -0.39f, kDn = lateT ? -0.54f : -0.68f, kSn = lateT ? 0.99f : 0;
     const bool sh = PRIOR_SH != 0;
     const float pTS = (float)PRIOR_TS;
     const float pTA = (float)PRIOR_TA, pTN = (float)(PRIOR_TN != 0 ? PRIOR_TN : PRIOR_N);
@@ -1567,7 +1570,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     const int hd = S.s[i].head(), f = S.s[i].facing(), t0 = T[hd];
                     for (int q = 0; q < 4; q++) {
                         int c = hd + DELTA[q], dd = T[c] - t0;
-                        tb[q] = pT * (-0.46f * (dd < -3 ? -3 : dd > 3 ? 3 : dd) + 1.2f * supc[c] + (q == f && (!sh || (q & 1)) ? 0.49f : 0) + (q == 0 ? -0.39f : q == 2 ? -0.68f : 0) + (S.occ[c] == APPLE ? pTA : 0) + (pTS != 0 && (S.occ[c + STRIDE] == APPLE || S.occ[c + STRIDE] >= SNAKE) ? pTS : 0));
+                        tb[q] = pT * (kD * (dd < -3 ? -3 : dd > 3 ? 3 : dd) + kSup * supc[c] + (q == f && (!sh || (q & 1)) ? 0.49f : 0) + (q == 0 ? kUp : q == 2 ? kDn : 0) + (S.occ[c] == APPLE ? pTA : 0) + (pTS != 0 && (S.occ[c + STRIDE] == APPLE || S.occ[c + STRIDE] >= SNAKE) ? pTS : 0) + (kSn != 0 && S.occ[c + STRIDE] >= SNAKE ? kSn : 0));
                     }
                     bias = tb;
                 }
