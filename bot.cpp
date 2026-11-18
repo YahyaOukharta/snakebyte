@@ -344,6 +344,9 @@ PARAM(PRIOR_W, 0.05);        // root prior: value per unit of the move-preferenc
 PARAM(PRIOR_TA, 0);       // in-tree prior: weight of "the target cell is an apple" (1.25 in the fitted preferences)
 PARAM(PRIOR_TS, 0);       // in-tree prior: weight of "the target cell rests on a snake or an apple" (about 1.05 when fitted with the in-tree facts)
 PARAM(PRIOR_TN, 0);       // in-tree prior: its own fading constant (0 = PRIOR_N)
+PARAM(THREAT_L, 0);       // ... only for my snakes of at most this length (3: the ones a head-on removes whole); 0 = all
+PARAM(THREAT_A, 0);       // ... and only with at most this many apples left (0 = always)
+PARAM(THREAT_E, 0);       // ... and only against enemy snakes longer than this
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
 PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
 PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
@@ -1474,13 +1477,13 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
     for (int i = 0; i < NS; i++) {
         if (!root.s[i].alive || OWNER[i] != 0) continue;
         int valid = validMask(root, i), safe = valid;
-        if (THREAT != 0)
+        if (THREAT != 0 && (THREAT_L == 0 || root.s[i].len <= THREAT_L) && (THREAT_A == 0 || root.napples <= THREAT_A))
             for (int d = 0; d < 4; d++) {
                 if (!(valid >> d & 1)) continue;
                 int c = root.s[i].head() + DELTA[d];
                 if (THREAT < 2 && root.occ[c] == APPLE) continue;
                 for (int j = 0; j < NS; j++) {
-                    if (!root.s[j].alive || OWNER[j] == 0) continue;
+                    if (!root.s[j].alive || OWNER[j] == 0 || root.s[j].len <= THREAT_E) continue;
                     int e = c - root.s[j].head();
                     if ((e == 1 || e == -1 || e == STRIDE || e == -STRIDE) && c != root.s[j].part(1)) safe &= ~(1 << d);
                 }

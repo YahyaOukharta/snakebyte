@@ -27,7 +27,8 @@ Started at rank 328 of 394 in Legend (17.91) with the March 2026 contest bot
 | v1.11 again | 35.54 | 3 |
 | v1.13: value net trained with the replayed arena games | 34.97 (reverted) | 3 |
 | v1.14: v1.11 with a stronger root prior (0.08) | 34.55 (reverted) | 3 |
-| v1.11, third run | running | |
+| v1.11, third run | 35.23 | 3 |
+| v1.15: endgame head-on rule for snakes of length 3 | running | |
 
 The arena's first two (_H3R0_ 36.9, sZoom 36.8) are five points clear of the third (31.9).
 

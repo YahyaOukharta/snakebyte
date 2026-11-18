@@ -25,7 +25,8 @@ maps, both seats). Self-play overstates arena gains.
 | v1.11 again | the same file resubmitted after v1.12 | | **35.54**: with the first run, v1.11 is about 35.8 and v1.12's 34.95 a real step down | 3 |
 | v1.13 | v1.11 with the **value net n4c**: trained on self-play (generation 3) plus the 1,848 replayed arena games three times and the 331 games against the top two five more times | Kaggle, real time, vs n2a: +30, +27, +45, +10 (**+28 ± 15**, 1600 games) | **34.97** (+94 −48 =17, 64.5%; v1.11's rerun 68.2%): the Kaggle gain did not carry over. Reverted | 3 |
 | v1.14 | v1.11 (net n2a) with the root prior weight 0.05 → 0.08 | agreement with _H3R0_'s moves 63.3% → 64.3% measured by mistake without the net; with it 63.45 → 63.57, sZoom 64.85 → 65.57; self-play −4 ± 30. Same signature as v1.10, which self-play disliked and the arena liked | **34.55** (+91 −51 =17, 62.6%). Reverted | 3 |
-| v1.11, third run | resubmitted after v1.14: three changes in a row (pass charge, real-games net, prior weight) finished at 34.5–35.0 against v1.11's 36.04 and 35.54 | | running | |
+| v1.11, third run | resubmitted after v1.14: three changes in a row (pass charge, real-games net, prior weight) finished at 34.5–35.0 against v1.11's 36.04 and 35.54 | | **35.23**. Three runs of the same file: 36.04, 35.54, 35.23, mean 35.6, so one arena run is worth about ± 0.4 | 3 |
+| v1.15 | v1.11 + **endgame head-on rule**: with 6 apples or fewer left, a snake of length 3 does not step onto a cell an enemy head can step onto, if it has another move (`THREAT` 2, `THREAT_L` 3, `THREAT_A` 6) | Kaggle real time +16, +19 (800 games); on 38 real endgame head-on deaths replayed against the recorded moves: deaths 35 → 24, parts lost 109 → 74 | running | |
 
 ## Measurements
 
@@ -171,6 +172,9 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Timeouts of our seat in the arena, v1.11 rerun + v1.13; share of turns over 40 / 50 / 60 ms at a 38 ms budget | 318 games; 50,661 turns | 3 (one with the opponent timing out on the same turn); 0.43% / 0.10% / 0.01% |
 | `PRIOR_E` (root prior of the enemy's snakes × 2 / 3 / 4 / 6 / 0.5 / 0), Kaggle real time, two runs each where two are given | 400 each | −5, −22 / −18, −6 / −29, +4 / +10, +7 / −22 / −13: noise, as self-play must be for a model of another player |
 | `PRIOR_E` 4 against v1.11 in paired replays against the live sZoom and _H3R0_ bots | 65 pairs | margin +0.18 ± 1.31, wins 13 : 13. Level |
+| **Margins against the top two** (143 games of v1.11–v1.14): lost by 10 or more / 4–9 / 1–3; level; won by 1–3 / 4 or more | 143 | 15 / 29 / **48**; 23; **8** / 20. A third of the games are lost by one to three points, and in 19 of those 48 we were level or ahead with three apples left |
+| Head-ons in those games: whole snake lost (length 3) per game, us / them; the same with 6 apples or fewer left; share of snake-turns at length 3 | 143 | 0.41 / 0.27; **0.27 / 0.09**; 16.1% / 13.5% |
+| Root rule "a snake of length 3 does not enter a cell an enemy head can enter" (`THREAT` 2, `THREAT_L` 3), Kaggle real time: always (three runs); apple cells excepted; only against longer snakes (two runs); up to length 4; **with at most 4 / 6 / 10 apples left** (two runs each) | 400 each | −13, −23, −34; −13, −10; −1, −14; −13, −13; +3, −15 / **+16, +19** / +11, −13 |
 | Late-game agreement (from turn 40) with reach tables up to length 16 / 20; unreachable gradient; stuck cost 0.5: sZoom; _H3R0_ | 14.9k / 12.9k decisions | +0.4 / +0.4; +0.3; +0.9. −0.2 / −0.3; −0.1; −0.5 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
