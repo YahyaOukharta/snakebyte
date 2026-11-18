@@ -353,6 +353,7 @@ PARAM(PH_A, 6);
 PARAM(PRIOR_T3, 0);       // the in-tree prior before the endgame takes the weights fitted on 13+ and on 7-12 apples left
 PARAM(PRIOR_TL, 0);       // the in-tree prior takes its weights from the endgame fit with at most PH_A apples left
 PARAM(LAST_AP, 0);        // root: my snakes do not eat the last apple when the game would end lost
+PARAM(OPP_POL, 0);        // share of the enemy snakes' moves in the tree drawn from the fitted preferences in place of their own UCB choice
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
 PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
 PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
@@ -1473,6 +1474,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         }
     const bool tempo = EV_TEMPO != 0, passOn = EV_PASS != 0, togo = TOGO != 0, priorT = PRIOR_T != 0;
     const float pT = (float)PRIOR_T;
+    const float oppPol = PRIOR_W != 0 && PRIOR_T != 0 ? (float)OPP_POL : 0;
     const bool lateT = PRIOR_TL != 0 && root.napples <= PH_A;   // in-tree weights from the endgame fit
     float kD = lateT ? -0.32f : -0.46f, kSup = lateT ? 1.09f : 1.2f, kUp = lateT ? -0.25f : -0.39f, kDn = lateT ? -0.54f : -0.68f, kSn = lateT ? 0.99f : 0;
     if (PRIOR_T3 != 0 && !lateT) {                           // the earlier phases from their own fits
@@ -1599,6 +1601,14 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     bias = tb;
                 }
                 m = selectMove(pool[nd], mask, OWNER[i] == 0 ? 1.f : -1.f, nearF[i], S.s[i].head(), bias, d == 0 ? (float)PRIOR_N : pTN);
+                if (oppPol > 0 && OWNER[i] != 0 && bias && (float)(rnd() & 1023) < oppPol * 1024) {   // the enemy's snake plays a move drawn from the fitted preferences
+                    const float sc = d == 0 ? 1.f / (float)PRIOR_W : 1.f / pT;
+                    float e[4], z = 0;
+                    for (int q = 0; q < 4; q++) e[q] = mask >> q & 1 ? expf(bias[q] * sc) : 0, z += e[q];
+                    float u = (float)(rnd() & 0xffff) / 65536.f * z;
+                    for (int q = 0; q < 4; q++)
+                        if (mask >> q & 1) { m = q; if ((u -= e[q]) < 0) break; }
+                }
                 mv[i] = m;
                 pathNode[d][i] = nd;
                 pathMove[d][i] = m;
