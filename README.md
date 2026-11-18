@@ -25,7 +25,7 @@ Started at rank 328 of 394 in Legend (17.91) with the March 2026 contest bot
 | v1.11: the same prior at every node of the tree | 36.04 | 3 |
 | v1.12: the prior no longer rewards standing still | 34.95 (reverted) | 3 |
 | v1.11 again | 35.54 | 3 |
-| v1.13: value net trained with the replayed arena games | running | |
+| v1.13: value net trained with the replayed arena games | 34.97 (reverted) | 3 |
 
 The arena's first two (_H3R0_ 36.9, sZoom 36.8) are five points clear of the third (31.9).
 
