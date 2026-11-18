@@ -21,7 +21,8 @@ maps, both seats). Self-play overstates arena gains.
 | v1.9 | **tempo credit** (`EV_TEMPO` 0.1): a snake's own credit is charged the mean table distance to its nearest apple over the line, so getting there sooner counts. The switch that moved the agreement with _H3R0_'s moves most (+1.4 points) | Kaggle, real time, vs v1.8: +16, −2 (+7 ± 22) | **33.75**: the best so far | **3** |
 | v1.10 | **root prior** (`PRIOR_W` 0.05, `movePrefs`): every snake's root, ours and theirs, gets a bias toward the kind of move the top players choose (sixteen facts about a move, weights fitted on 30,000 of their decisions), fading with the visits | agreement with _H3R0_'s moves 61.9% → 63.9%; real-time self-play −17, +42; Kaggle −10, −13 | **34.25**: the best so far, with a change that is slightly negative against ourselves | **3** |
 | v1.11 | **the prior inside the whole tree** (`PRIOR_T` 0.15): at every node a fading bias from the facts that need no scan (closer to an apple by the table, onto a supported cell, straight on, not up or down); packed with `--release` (no local-tool code) | Kaggle, real time, vs v1.10 settings: weight 0.03 +20, 0.05 +45, 0.08 +36, **0.15 +63**, 0.25 +24, 0.4 −21, 0.7 −115 (400 games each); local +60 | **36.04**: 1.8 above v1.10; _H3R0_ 38.33, sZoom 38.25, fourth 32.40 | **3** |
-| v1.12 | **the root prior charges a pass** (`PRIOR_PASS` 1.5): a move after which the head is where it was (up and fall back) loses 1.5 on the preference score; the share of pass moves on 48 arena positions falls from 31% to 13% | Kaggle, real time, vs v1.11 settings, 400 games each: weight 1 +23; 1.5 +33, +10, +13; 2 +12; 2.5 +3; 4 +30 | running | |
+| v1.12 | **the root prior charges a pass** (`PRIOR_PASS` 1.5): a move after which the head is where it was (up and fall back) loses 1.5 on the preference score; the share of pass moves on 48 arena positions falls from 31% to 13% | Kaggle, real time, vs v1.11 settings, 400 games each: weight 1 +23; 1.5 +33, +10, +13; 2 +12; 2.5 +3; 4 +30 | **34.95**: 1.1 under v1.11, reverted | 3 |
+| v1.11 again | the same file resubmitted after v1.12 | | running: the second sample of v1.11 | |
 
 ## Measurements
 
@@ -158,6 +159,7 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Around the pass charge 1.5: in-tree weight 0.12 / 0.2; root weight 0.08; tempo 0.15 | 400 each | −4 / −10; +11; −23 |
 | v1.11 in the arena against the top two: record; wall hits a game (ours / theirs) | 29 games | _H3R0_ +5 −8 =1, sZoom +2 −11 =2; 0.14 / 0.07 (v1.8: 0.45 / 0.03) |
 | Preferences fitted on the facts the tree has (distance change, target on a wall or apple, straight, up, down, apple): held-out accuracy on both players' decisions | 18.7k | 61.6% with six facts: distance −0.42 a cell, support +1.05, straight +0.42, down −0.57, apple +1.00 |
+| Kaggle on the v1.12 settings: apple at the target in the tree 1.0 / 0.5; target on a snake or apple 1.0 / 0.5; both; fading constant of the tree 40 / 250; net root prior; survival check; no room term | 400 each | −2 / −25; −3 / −8; −33; −10 / −1; −5; **−51**; −15 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -553,6 +555,18 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   hits against the top two fell to a third. It costs a few table lookups per node.
   Six facts about a move, with weights read off the top players' games, are worth more
   than every evaluation term added since the net.
+
+- **Seven positive gates and a lost arena run.** The pass charge was +3 to +33 in every
+  one of seven Kaggle gates (2,800 games) and v1.12 finished 1.1 below v1.11. Either one
+  of the two arena scores is off by more than the ±0.5 assumed so far, or standing still
+  is right more often against real opponents than against ourselves (the top players
+  pass on 17–20% of their moves, and the prior was fitted on what they do). v1.11 was
+  resubmitted to measure the first.
+- Against sZoom, v1.11 is level until a quarter of the apples are left (−0.4 at turn 30,
+  −1.4 at 25%) and loses three more in the last quarter (−4.3 at the end); against
+  _H3R0_ that late drop is gone (−1.5). The last apples are the clusters on the top edge;
+  his long snakes are under them before the last quarter starts, one of them standing on
+  our longest snake.
 
 ## Arena notes
 

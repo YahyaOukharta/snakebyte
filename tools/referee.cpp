@@ -10,6 +10,7 @@
 //   referee --export OUT IN...                  records -> features and labels
 //   referee --evalcheck NET RECORDS N           net output of the engine on the first N records
 //   referee --trace FILE                        replay a recorded game, print every position (tools/trace.py)
+//   referee --feat OUT TRACE...                 net inputs and results of replayed real games, as training records
 //   referee --agree FILE EVERY ITERS            share of the game's moves our search picks itself (tools/agree.py)
 //   referee --rail FILE T K BOT [ITERS]         the game up to turn T, then BOT plays our snakes for K turns against his recorded moves
 // Every map is played twice with the seats swapped. -n sets SB_ITERS for both bots
@@ -595,6 +596,8 @@ static Result playGame(const Map &m, const char *bot0, const char *bot1, long it
 // our snakes afresh while the opponent's snakes stay on the moves they really played. Not
 // what he would have answered, but it shows whether a build walks into the same trap.
 // Prints "RAIL walls W deaths D lost P len L0->L1" for our side over those K turns.
+static FILE *featOut = nullptr;   // --feat: every position of a replayed game as a training record
+static vector<array<float, 2 * (NF + 3)>> featRec;
 static int agreeEvery = 0;       // --agree: every so many turns, search the position and compare with the moves of the game
 static long agA[2], agN[2];
 static const char *railBot = nullptr;
@@ -680,8 +683,8 @@ static int traceGame(const char *path, int dumpTurn = -1) {
             }
             return 0;
         }
-        if (dumpTurn < 0 && !railBot && !agreeEvery) printf("%d | %d %d | %d %d | %d |", S.turn, S.len[0], S.len[1], S.losses[0], S.losses[1], S.napples);
-        for (int i = 0; i < n && dumpTurn < 0 && !railBot && !agreeEvery; i++) {
+        if (dumpTurn < 0 && !railBot && !agreeEvery && !featOut) printf("%d | %d %d | %d %d | %d |", S.turn, S.len[0], S.len[1], S.losses[0], S.losses[1], S.napples);
+        for (int i = 0; i < n && dumpTurn < 0 && !railBot && !agreeEvery && !featOut; i++) {
             const Snake &k = S.s[i];
             if (!k.alive) { printf(" 0 0 0 0 0 0 255"); continue; }
             int l, r, bd = 255, ba = -1;
@@ -691,7 +694,7 @@ static int traceGame(const char *path, int dumpTurn = -1) {
                 if (S.occ[appleCell[a]] == APPLE && row[a] < bd) bd = row[a], ba = a;
             printf(" 1 %d %d %d %d %d %d", k.len, cx(k.head()), cy(k.head()), ba < 0 ? -1 : cx(appleCell[ba]), ba < 0 ? -1 : cy(appleCell[ba]), bd);
         }
-        if (dumpTurn < 0 && !railBot && !agreeEvery && getenv("SB_SURV")) {                         // per snake "legalMask/survivingMask" (depth SB_SURV, others fixed)
+        if (dumpTurn < 0 && !railBot && !agreeEvery && !featOut && getenv("SB_SURV")) {                         // per snake "legalMask/survivingMask" (depth SB_SURV, others fixed)
             printf(" | S");
             for (int i = 0; i < n; i++) {
                 if (!S.s[i].alive) { printf(" 0/0"); continue; }
@@ -715,9 +718,18 @@ static int traceGame(const char *path, int dumpTurn = -1) {
                 printf(" %d/%d", rm, ok);
             }
         }
-        if (dumpTurn < 0 && !railBot && !agreeEvery) printf(" |%s\n", eaten.c_str());
+        if (dumpTurn < 0 && !railBot && !agreeEvery && !featOut) printf(" |%s\n", eaten.c_str());
         if (S.terminal() || (t >= T && !(railBot && t < railFrom + railK))) {
             if (agreeEvery) printf("AGREE us %ld %ld opp %ld %ld\n", agA[0], agN[0], agA[1], agN[1]);
+            if (featOut) {
+                int wn = winnerOf(S);
+                for (auto &rec : featRec)
+                    for (int p = 0; p < 2; p++) {
+                        float *f = rec.data() + p * (NF + 3);
+                        f[NF] = wn < 0 ? 0.5f : wn == p ? 1.0f : 0.0f, f[NF + 1] = (S.len[p] - S.len[1 - p]) / 16.0f, f[NF + 2] = 0;
+                        fwrite(f, sizeof(float), NF + 3, featOut);
+                    }
+            }
             if (railBot) printf("RAIL walls %d deaths %d lost %d len %d->%d opp %d->%d\n", rw, rd, rl, rlen0, S.len[0], rlen1, S.len[1]), rp.stop();
             break;
         }
@@ -770,6 +782,11 @@ static int traceGame(const char *path, int dumpTurn = -1) {
         }
         // what each snake runs into this turn, written after the apples as "!snake:cause:other:lengthBefore"
         // causes: W wall, S own body, B body of snake `other`, H head-on with `other`, F fell out
+        if (featOut) {                                      // both points of view; the labels are filled in at the end of the game
+            array<float, 2 * (NF + 3)> rec;
+            for (int p = 0; p < 2; p++) features(S, p, rec.data() + p * (NF + 3));
+            featRec.push_back(rec);
+        }
         if (agreeEvery && t >= 4 && t % agreeEvery == 0) {
             int8_t out[MAXS];
             haveTrees = false;
@@ -840,6 +857,12 @@ static int traceGame(const char *path, int dumpTurn = -1) {
 
 int main(int argc, char **argv) {
     if (argc >= 3 && !strcmp(argv[1], "--trace")) return traceGame(argv[2], argc > 3 ? atoi(argv[3]) : -1);
+    if (argc >= 4 && !strcmp(argv[1], "--feat")) {           // OUT TRACE...: net inputs and results of real games (same records as --export)
+        featOut = fopen(argv[2], "wb");
+        for (int k = 3; k < argc; k++) featRec.clear(), traceGame(argv[k]);
+        fclose(featOut);
+        return 0;
+    }
     if (argc >= 5 && !strcmp(argv[1], "--agree")) {          // FILE EVERY ITERS: does our search pick the moves that were played?
         agreeEvery = atoi(argv[3]), fixedIters = atol(argv[4]);
         initSearch();
