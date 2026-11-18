@@ -344,6 +344,7 @@ PARAM(PRIOR_W, 0.05);        // root prior: value per unit of the move-preferenc
 PARAM(PRIOR_TA, 0);       // in-tree prior: weight of "the target cell is an apple" (1.25 in the fitted preferences)
 PARAM(PRIOR_TS, 0);       // in-tree prior: weight of "the target cell rests on a snake or an apple" (about 1.05 when fitted with the in-tree facts)
 PARAM(PRIOR_TN, 0);       // in-tree prior: its own fading constant (0 = PRIOR_N)
+PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
 PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
 PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
 PARAM(PRIOR_NET, 0);      // 1: the root prior comes from the preference net (prefNet) instead of the sixteen linear weights
@@ -1467,7 +1468,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                 if (rm >> d & 1) mean += L[d];
             mean /= cnt;
             for (int d = 0; d < 4; d++)
-                if (rm >> d & 1) rootBias[i][d] = (float)PRIOR_W * (L[d] - mean);
+                if (rm >> d & 1) rootBias[i][d] = (float)(PRIOR_W * (OWNER[i] != 0 ? PRIOR_E : 1)) * (L[d] - mean);
         }
     int rootMask[MAXS];                                      // my snakes' moves at the root
     for (int i = 0; i < NS; i++) {
