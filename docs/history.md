@@ -24,6 +24,7 @@ maps, both seats). Self-play overstates arena gains.
 | v1.12 | **the root prior charges a pass** (`PRIOR_PASS` 1.5): a move after which the head is where it was (up and fall back) loses 1.5 on the preference score; the share of pass moves on 48 arena positions falls from 31% to 13% | Kaggle, real time, vs v1.11 settings, 400 games each: weight 1 +23; 1.5 +33, +10, +13; 2 +12; 2.5 +3; 4 +30 | **34.95**: 1.1 under v1.11, reverted | 3 |
 | v1.11 again | the same file resubmitted after v1.12 | | **35.54**: with the first run, v1.11 is about 35.8 and v1.12's 34.95 a real step down | 3 |
 | v1.13 | v1.11 with the **value net n4c**: trained on self-play (generation 3) plus the 1,848 replayed arena games three times and the 331 games against the top two five more times | Kaggle, real time, vs n2a: +30, +27, +45, +10 (**+28 ± 15**, 1600 games) | **34.97** (+94 −48 =17, 64.5%; v1.11's rerun 68.2%): the Kaggle gain did not carry over. Reverted | 3 |
+| v1.14 | v1.11 (net n2a) with the root prior weight 0.05 → 0.08 | agreement with _H3R0_'s moves 63.3% → 64.3% (25.7k decisions, 210 games); self-play on n4c −18 ± 30. Same signature as v1.10, which self-play disliked and the arena liked | running | |
 
 ## Measurements
 
