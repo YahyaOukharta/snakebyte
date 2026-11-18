@@ -30,7 +30,8 @@ Started at rank 328 of 394 in Legend (17.91) with the March 2026 contest bot
 | v1.11, third run | 35.23 | 3 |
 | v1.15: endgame head-on rule for snakes of length 3 | 33.55 (reverted) | 3 |
 | v1.11, fourth run | 34.23 | 3 |
-| v1.16: endgame weights for the root prior | running | |
+| v1.16: endgame weights for the root prior | 34.95 at 92% | 3 |
+| v1.17: endgame weights in the tree as well | running | |
 
 The arena's first two (_H3R0_ 36.9, sZoom 36.8) are five points clear of the third (31.9).
 
