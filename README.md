@@ -33,7 +33,8 @@ Started at rank 328 of 394 in Legend (17.91) with the March 2026 contest bot
 | v1.16: endgame weights for the root prior | 34.95 at 92% | 3 |
 | v1.17: endgame weights in the tree as well | 35.39 (70% wins, 41% against the top two) | 3 |
 | v1.18: v1.17 with root prior weight 0.08 | 34.09 (reverted) | 3 |
-| v1.17, second run | running | |
+| v1.17, second run | 34.52 | 3 |
+| v1.19: v1.17 + last-apple rule + phase weights before the endgame | running | |
 
 The arena's first two (_H3R0_ 36.9, sZoom 36.8) are five points clear of the third (31.9).
 

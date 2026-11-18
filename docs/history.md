@@ -31,7 +31,8 @@ maps, both seats). Self-play overstates arena gains.
 | v1.16 | v1.11 + **endgame weights for the root prior** (`PRIOR_PH` 1): with 6 apples or fewer left the move score is a fit of 23 facts on the top two's endgame moves only | agreement with _H3R0_ 63.45 → 63.97, sZoom 64.85 → 65.73; Kaggle real time −1, −10, +6 (level) | 34.95 at 92% (replaced by v1.17 before the end) | 3 |
 | v1.17 | v1.16 + the **endgame weights in the in-tree prior** (`PRIOR_TL` 1) | agreement with _H3R0_ 64.27, sZoom 66.15 (v1.11: 63.45, 64.85) | **35.39** (+104 −40 =15, **70.1%**, the best win rate of any run; against the top two +12 −17 =2, where v1.11's four runs had 20–38%). The new base | 3 |
 | v1.18 | v1.17 + root prior weight 0.05 → 0.08 | agreement _H3R0_ 64.27 → 64.55, sZoom 66.15 → 66.99; phase switch at 10 / 14 apples in place of 6: 64.40, 66.33 / 64.48, 66.15 (no difference) | **34.09** (+91 −53 =15, 61.9%; top two +5 −29). The second low run of weight 0.08 after v1.14: dropped | 3 |
-| v1.17, second run | resubmitted after v1.18 | | running | |
+| v1.17, second run | resubmitted after v1.18 | | **34.52** (+96 −49 =14, 64.8%; top two +7 −21). Two runs of v1.17: 35.39, 34.52; four of v1.11: mean 35.3. Not distinguishable | 3 |
+| v1.19 | v1.17 + the last-apple rule (`LAST_AP`) + phase weights for the in-tree prior before the endgame (`PRIOR_T3`) | agreement _H3R0_ 64.44, sZoom 66.41; the rule level in 3,200 self-play games | running | |
 
 ## Measurements
 
