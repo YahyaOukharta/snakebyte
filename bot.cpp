@@ -347,6 +347,7 @@ PARAM(PRIOR_TN, 0);       // in-tree prior: its own fading constant (0 = PRIOR_N
 PARAM(THREAT_L, 0);       // ... only for my snakes of at most this length (3: the ones a head-on removes whole); 0 = all
 PARAM(THREAT_A, 0);       // ... and only with at most this many apples left (0 = always)
 PARAM(THREAT_E, 0);       // ... and only against enemy snakes longer than this
+PARAM(NEAR_M, 0);         // tempo credit and in-tree prior: apples an enemy snake reaches this many moves sooner are not targets (0 = off)
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
 PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
 PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
@@ -1440,6 +1441,16 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
             reachIdx(root, i, l, r);
             for (int a = 0; a < nApple0; a++) {
                 if (root.occ[appleCell[a]] != APPLE) continue;
+                if (NEAR_M != 0) {                                 // an apple an enemy snake reaches NEAR_M moves sooner is not a target
+                    int me = GDROW(l, r, root.s[i].head())[a], lost = 0;
+                    for (int j = 0; j < NS && !lost; j++) {
+                        if (!root.s[j].alive || OWNER[j] == OWNER[i]) continue;
+                        int lj, rj;
+                        reachIdx(root, j, lj, rj);
+                        if (GDROW(lj, rj, root.s[j].head())[a] + (int)NEAR_M <= me) lost = 1;
+                    }
+                    if (lost) continue;
+                }
                 for (int c = 0; c < CELLS; c++) {
                     uint8_t g = GDROW(l, 0, c)[a];
                     T[c] = g < T[c] ? g : T[c];
