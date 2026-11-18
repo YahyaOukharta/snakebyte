@@ -365,6 +365,7 @@ PARAM(SNK_SUP, 1);        // 1: a part resting on another snake's body counts as
 PARAM(SAFE, 0);           // root safety: plies of worst-case check against the enemy snakes near one of mine (0 = off, 2)
 PARAM(SAFE_R, 5);
 PARAM(SAFE_NE, 2);        // ... at most this many of them (1 allows a deeper check)
+PARAM(SAFE_A, 0);         // root survival only with at most this many apples left (0 = always)
 PARAM(SAFE_D, 0);         // root survival: a move is dropped if, with the other bodies fixed, the snake cannot make SAFE_D legal moves after it and another move can (0 = off)         // ... enemy heads within this many cells
 PARAM(EV_TRAP, 0);        // cost for a snake with no legal move at the leaf (it loses a part next turn), and TRAP1 x that for a single move left
 PARAM(TRAP1, 0);
@@ -1187,7 +1188,7 @@ static bool survives(const State &S, int i, int depth) {
         int8_t m[MAXS] = {0, 0, 0, 0, 0, 0, 0, 0};
         m[i] = d;
         T.step(m);
-        if (T.s[i].alive && survives(T, i, depth - 1)) return true;
+        if (T.s[i].alive && T.s[i].len >= S.s[i].len && survives(T, i, depth - 1)) return true;   // losing a part is not surviving
     }
     return false;
 }
@@ -1200,15 +1201,21 @@ static int surviveMask(const State &root, int i, int mask) {
         A.s[j].alive = 0;
     }
     A.recount();
-    int ok = 0;
+    int best = -1, ok = 0;                                               // keep the moves that last longest, up to SAFE_D
     for (int d = 0; d < 4; d++) {
         if (!(mask >> d & 1)) continue;
         State T = A;
         int8_t m[MAXS] = {0, 0, 0, 0, 0, 0, 0, 0};
         m[i] = d;
         T.step(m);
-        surviveNodes = 0;
-        if (T.s[i].alive && survives(T, i, (int)SAFE_D)) ok |= 1 << d;
+        int k = -1;
+        if (T.s[i].alive && T.s[i].len >= A.s[i].len)
+            for (k = 0; k < (int)SAFE_D; k++) {
+                surviveNodes = 0;
+                if (!survives(T, i, k + 1)) break;
+            }
+        if (k > best) best = k, ok = 0;
+        if (k == best) ok |= 1 << d;
     }
     return ok ? ok : mask;
 }
@@ -1490,7 +1497,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
             }
 #ifdef LOCAL
         if (SAFE != 0) safe = safeMask(root, i, safe ? safe : valid);
-        if (SAFE_D != 0) safe = surviveMask(root, i, safe ? safe : valid);
+        if (SAFE_D != 0 && (SAFE_A == 0 || root.napples <= SAFE_A)) safe = surviveMask(root, i, safe ? safe : valid);
 #endif
         rootMask[i] = safe ? safe : valid;
     }
