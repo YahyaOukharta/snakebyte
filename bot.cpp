@@ -1350,7 +1350,16 @@ static void moveFeatures(const State &S, int i, int d, float *f) {
     f[k++] = (room > 30 ? 30 : room) / 30.0f, f[k++] = room < 6, f[k++] = (apNear > 5 ? 5 : apNear) / 5.0f;
     f[k++] = enemy && ln > eLen, f[k++] = enemy && ln <= 3;
     { int ld = S.len[OWNER[i]] - S.len[1 - OWNER[i]]; f[k++] = (ld < -10 ? -10 : ld > 10 ? 10 : ld) / 10.0f; }
-    f[k++] = (H - cy(c)) / 24.0f, f[k++] = (ln > 12 ? 12 : ln) / 12.0f, f[k++] = (S.napples > 40 ? 40 : S.napples) / 40.0f, f[k++] = S.turn / 200.0f;
+    f[k++] = (H - cy(c)) / 24.0f, f[k++] = (ln > 12 ? 12 : ln) / 12.0f;
+    {                                                        // straight-line facts, for snakes with no path in the tables
+        int m0 = 99, m1 = 99;
+        for (int a = 0; a < nApple0; a++) {
+            if (S.occ[appleCell[a]] != APPLE) continue;
+            int ax = cx(appleCell[a]), ay = cy(appleCell[a]);
+            m0 = min(m0, abs(ax - cx(hd)) + abs(ay - cy(hd))), m1 = min(m1, abs(ax - cx(c)) + abs(ay - cy(c)));
+        }
+        f[k++] = m1 < m0 ? 1 : m1 > m0 ? -1 : 0, f[k++] = m1 == 1;
+    }
 }
 /*PREFNET*/
 // Preference net fitted by tools/prefs.py on the top players' decisions: NPF facts -> NPH -> score.
