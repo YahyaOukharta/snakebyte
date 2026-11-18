@@ -351,6 +351,7 @@ PARAM(NEAR_M, 0);         // tempo credit and in-tree prior: apples an enemy sna
 PARAM(PRIOR_PH, 0);        // root prior by phase: 1 = endgame weights with at most PH_A apples left, 2 = also the pre-endgame fit before
 PARAM(PH_A, 6);
 PARAM(PRIOR_TL, 0);       // the in-tree prior takes its weights from the endgame fit with at most PH_A apples left
+PARAM(LAST_AP, 0);        // root: my snakes do not eat the last apple when the game would end lost
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
 PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
 PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
@@ -1532,6 +1533,15 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     if ((e == 1 || e == -1 || e == STRIDE || e == -STRIDE) && c != root.s[j].part(1)) safe &= ~(1 << d);
                 }
             }
+        if (LAST_AP != 0 && root.napples == 1 && root.turn < 198) {   // the last apple ends the game: not eaten when that leaves us beaten
+            int me = root.len[0] + 1, he = root.len[1];
+            if (me < he || (me == he && root.losses[0] > root.losses[1])) {
+                int m = safe ? safe : valid, keep = m;
+                for (int d = 0; d < 4; d++)
+                    if ((m >> d & 1) && root.occ[root.s[i].head() + DELTA[d]] == APPLE) keep &= ~(1 << d);
+                if (keep) safe = keep;
+            }
+        }
 #ifdef LOCAL
         if (SAFE != 0) safe = safeMask(root, i, safe ? safe : valid);
         if (SAFE_D != 0 && (SAFE_A == 0 || root.napples <= SAFE_A)) safe = surviveMask(root, i, safe ? safe : valid);
