@@ -340,6 +340,12 @@ PARAM(CENTER, 0);        // 1: values are measured from the root's evaluation, s
 PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy head can enter this turn (apple cells excepted), 2 = apple cells too
 PARAM(TOGO, 0);           // 1: a node is backed up with what happened from it on (the gains made before it are taken out); for merged nodes, whose visits have different pasts
 PARAM(MERGE, 0);          // state merging: a snake's node is (depth mod MERGE, head cell, facing) whatever path led there; 0 = plain trees. 2 = by parity, 16 = by depth
+PARAM(PRIOR_W, 0.05);        // root prior: value per unit of the move-preference score fitted on the top players' moves (0 = off)
+PARAM(PRIOR_T, 0);        // the same inside the tree, from the facts that need no scan: closer to an apple, onto a supported cell, straight on, up / down
+PARAM(PRIOR_N, 100);      // ... fading with the visits of the move: x PRIOR_N / (PRIOR_N + visits)
+PARAM(EV_DEAD, 0);        // cost for a snake whose head is on a cell from which, even standing supported, it reaches no apple (a dead zone for its length)
+PARAM(EV_D2, 0);          // cost per cell between the nearest and the second nearest apple (capped at 10): prefer clusters
+PARAM(OWN_LOSS, 1);       // own credit: weight of the parts a snake lost (1 = as much as the parts it gained); below 1 it yields less in head-ons
 PARAM(EV_HEAD, 0);        // head threat: cost x (3 - distance to the nearest enemy head) when that is under 3; HEAD_MODE 2: only against a snake at least as long, a bonus against a shorter one
 PARAM(HEAD_MODE, 1);
 PARAM(EV_SPACE, 1);       // cost for a snake whose head has little room: EV_SPACE x (SP_MIN - cells reachable in SP_STEPS moves) / SP_MIN
@@ -662,6 +668,7 @@ struct Scan {
     int own[MAXS];               // apples this snake is the nearest of all to
     int cnt[MAXS];               // apples this snake can reach
     int dt[MAXS];                // distance to the nearest apple it is its side's closest snake to (255: none)
+    int dz[MAXS];                // distance to the nearest apple from the head's cell at run 0 (255: a dead zone)
     int owned[2], contested, unreach;
     float prox[2];               // sum over owned apples of 1 / (1 + distance)
     int bank[2];                 // apples reached at least BANK_M moves before the opponent
@@ -676,15 +683,16 @@ static struct InvInit {
     InvInit() { for (int i = 0; i < 257; i++) invT[i] = 1.0f / (1 + i); }
 } invInit;
 static void scanApples(const State &S, Scan &c) {
-    const uint8_t *row[MAXS], *rowU[MAXS];                   // each live snake's distances to all apples
+    const uint8_t *row[MAXS], *rowU[MAXS], *rowZ[MAXS];      // each live snake's distances to all apples
     int id[MAXS], own[MAXS], ns = 0;
     for (int i = 0; i < NS; i++) {
-        c.d1[i] = c.d2[i] = c.du[i] = c.dt[i] = 255, c.own[i] = c.cnt[i] = 0;
+        c.d1[i] = c.d2[i] = c.du[i] = c.dt[i] = c.dz[i] = 255, c.own[i] = c.cnt[i] = 0;
         if (!S.s[i].alive) continue;
         int l, r;
         reachIdx(S, i, l, r);
         row[ns] = GDROW(l, r, S.s[i].head());
         rowU[ns] = GDROW(NL - 1, 0, S.s[i].head());
+        rowZ[ns] = GDROW(l, 0, S.s[i].head());
         id[ns] = i, own[ns] = OWNER[i], ns++;
     }
     c.owned[0] = c.owned[1] = c.contested = c.unreach = 0;
@@ -693,7 +701,7 @@ static void scanApples(const State &S, Scan &c) {
     c.bank[0] = c.bank[1] = 0;
     const int bankM = (int)BANK_M;
     const int cap = (int)SOFT_CAP;
-    const bool ug = EV_UG != 0;
+    const bool ug = EV_UG != 0, dz = EV_DEAD != 0;
     for (int q = 0; q < scanN; q++) {
         const int a = scanList[q];
         if (S.occ[appleCell[a]] != APPLE) continue;
@@ -705,6 +713,11 @@ static void scanApples(const State &S, Scan &c) {
             else if (v < c.d2[i]) c.d2[i] = v;
             if (v < m[o]) m[o] = v, im[o] = i;
         }
+        if (dz)
+            for (int k = 0; k < ns; k++) {
+                int v = rowZ[k][a];
+                if (v < c.dz[id[k]]) c.dz[id[k]] = v;
+            }
         if (ug)
             for (int k = 0; k < ns; k++) {
                 int v = rowU[k][a];
@@ -902,6 +915,8 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
         double dc = dd <= EV_N1 ? EV_S1 * dd : EV_S1 * EV_N1 + EV_S2 * (far < EV_N2 ? far : EV_N2);
         if (c.d1[i] == 255 && EV_UG != 0) dc = EV_S1 * EV_N1 + EV_S2 * EV_N2 - EV_UG * (40 - (c.du[i] < 40 ? c.du[i] : 40));
         if (c.d1[i] == 255) dc += EV_STUCK;
+        if (EV_DEAD != 0 && c.dz[i] == 255) dc += EV_DEAD;
+        if (EV_D2 != 0 && c.d1[i] != 255) { int g = c.d2[i] == 255 ? 10 : c.d2[i] - c.d1[i]; dc += EV_D2 * (g > 10 ? 10 : g); }
         if (EV_HEAD != 0) {
             int best = 99, bl = 0;
             for (int j = 0; j < NS; j++) {
@@ -926,7 +941,7 @@ static double evaluate(const State &S, double meanDiff, const State &root, doubl
         }
         double v = -dc + EV_ELEV * (H - cy(S.s[i].head()));
         raw += OWNER[i] == 0 ? v : -v;
-        own[i] = S.s[i].len - root.s[i].len - dc + EV_OWNS * c.own[i];
+        { double gr = S.s[i].len - (double)root.s[i].len; own[i] = (gr < 0 ? OWN_LOSS * gr : gr) - dc + EV_OWNS * c.own[i]; }
     }
     for (int i = 0; i < NS; i++)
         if (!S.s[i].alive) own[i] = -(double)root.s[i].len;
@@ -999,7 +1014,7 @@ static __m128 maskTab[16];
 static uint8_t nearF[MAXS][CELLS];
 static uint8_t nearT[MAXS][CELLS];   // the same for EV_TEMPO, capped at 40, filled whenever it is on
 
-static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t *F, int hd) {
+static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t *F, int hd, const float *bias = nullptr, float bn = 1) {
     float e = (float)UCB_C * (nd.N < 65536 ? sqrtLog[nd.N] : sqrtf(logf((float)nd.N)));
     uint32_t r = rnd();
     // priority of an unvisited move: closer to an apple first, random among equals
@@ -1010,6 +1025,8 @@ static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t
     __m128 n = _mm_loadu_ps(nd.n);
     __m128 q = _mm_add_ps(_mm_mul_ps(_mm_mul_ps(_mm_loadu_ps(nd.w), _mm_set1_ps(sign)), _mm_rcp_ps(n)),
                           _mm_mul_ps(_mm_set1_ps(e), _mm_rsqrt_ps(n)));
+    if (bias)                                                // a prior on the moves that fades as they are visited: bias x bn / (bn + n)
+        q = _mm_add_ps(q, _mm_div_ps(_mm_mul_ps(_mm_loadu_ps(bias), _mm_set1_ps(bn)), _mm_add_ps(_mm_set1_ps(bn), n)));
     __m128 jit = _mm_add_ps(_mm_set1_ps(1e6f), _mm_cvtepi32_ps(_mm_set_epi32(p3, p2, p1, p0)));
     q = _mm_blendv_ps(q, jit, _mm_cmpeq_ps(n, _mm_setzero_ps()));
     q = _mm_blendv_ps(_mm_set1_ps(-1e9f), q, maskTab[mask]);
@@ -1023,7 +1040,7 @@ static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t
     for (int d = 0; d < 4; d++) {
         float q = !(mask >> d & 1) ? -1e9f
                   : nd.n[d] == 0 ? 1e6f + (float)pr[d]
-                  : sign * nd.w[d] / nd.n[d] + e / sqrtf(nd.n[d]);
+                  : sign * nd.w[d] / nd.n[d] + e / sqrtf(nd.n[d]) + (bias ? bias[d] * bn / (bn + nd.n[d]) : 0);
         if (q > bestV) bestV = q, best = d;
     }
     return best;
@@ -1183,6 +1200,63 @@ static int surviveMask(const State &root, int i, int mask) {
     return ok ? ok : mask;
 }
 
+// ───────────────────────────── move preferences ─────────────────────────────
+// A linear score of a move from sixteen facts about it, fitted on the decisions sZoom and
+// _H3R0_ really made in arena games against us (tools/agree.py dumps them, the fit is a
+// softmax over the legal moves of each decision). On held-out decisions it picks sZoom's
+// move 67% of the time, more often than our whole search. The weights are the mean of the
+// two fits; the two "exits of the target" facts were left out.
+static void movePrefs(const State &S, int i, int rm, float *L) {
+    int l, r;
+    reachIdx(S, i, l, r);
+    const int hd = S.s[i].head(), f = S.s[i].facing();
+    auto near = [&](int c, int &d2) {
+        int b = 255;
+        d2 = 255;
+        const uint8_t *row = GDROW(l, 0, c);
+        for (int q = 0; q < scanN; q++) {
+            int a = scanList[q];
+            if (S.occ[appleCell[a]] != APPLE) continue;
+            int v = row[a];
+            if (v < b) d2 = b, b = v;
+            else if (v < d2) d2 = v;
+        }
+        return b;
+    };
+    int tmp, d0 = near(hd, tmp), e0 = 99;
+    for (int j = 0; j < NS; j++)
+        if (S.s[j].alive && OWNER[j] != OWNER[i]) e0 = min(e0, abs(cx(S.s[j].head()) - cx(hd)) + abs(cy(S.s[j].head()) - cy(hd)));
+    for (int d = 0; d < 4; d++) {
+        L[d] = 0;
+        if (!(rm >> d & 1)) continue;
+        int c = hd + DELTA[d], d2, d1 = near(c, d2), e1 = 99;
+        bool mate = false, enemy = false;
+        for (int j = 0; j < NS; j++) {
+            if (!S.s[j].alive || j == i) continue;
+            int dj = abs(cx(S.s[j].head()) - cx(c)) + abs(cy(S.s[j].head()) - cy(c));
+            if (OWNER[j] != OWNER[i]) e1 = min(e1, dj), enemy |= dj == 1;
+            else mate |= dj == 1;
+        }
+        float s = 0;
+        if (d0 != 255 && d1 != 255) { int dd = d1 - d0; s += -0.46f * (dd < -3 ? -3 : dd > 3 ? 3 : dd); }
+        if (d1 == 255 && d0 != 255) s += -1.15f;                            // into a cell with no apple in reach
+        if (d1 != 255 && d0 == 255) s += 0.85f;
+        if (d1 != 255) { int g = (d2 > 30 ? 30 : d2) - (d1 > 30 ? 30 : d1); s += -0.63f * (g < 0 ? 0 : g > 10 ? 10 : g) / 10; }
+        if (S.occ[c] == APPLE) s += 1.25f;
+        if (enemy) s += -0.26f;
+        if (mate) s += -1.70f;
+        { int t = e0 - e1; s += 0.08f * (t < -1 ? -1 : t > 1 ? 1 : t); }
+        uint8_t above = S.occ[c - STRIDE], below = S.occ[c + STRIDE];
+        if (above >= SNAKE && OWNER[above - SNAKE] != OWNER[i]) s += -0.24f;
+        if (below == WALL || below == APPLE) s += 1.20f;
+        else if (below >= SNAKE) s += 0.98f;
+        if (d == 0) s += -0.39f;
+        if (d == 2) s += -0.68f;
+        if (d == f) s += 0.49f;
+        L[d] = s;
+    }
+}
+
 // Returns the chosen direction per snake in out[] (all snakes, opponents included).
 static void search(const State &root, double budgetMs, int8_t *out, const int8_t *played = nullptr) {
     auto t0 = chrono::steady_clock::now();
@@ -1232,7 +1306,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
             }
         }
     }
-    if (EV_TEMPO != 0)
+    if (EV_TEMPO != 0 || PRIOR_T != 0)
         for (int i = 0; i < NS; i++) {
             if (!root.s[i].alive) continue;
             uint8_t *T = nearT[i];
@@ -1247,7 +1321,24 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                 }
             }
         }
-    const bool tempo = EV_TEMPO != 0, passOn = EV_PASS != 0, togo = TOGO != 0;
+    const bool tempo = EV_TEMPO != 0, passOn = EV_PASS != 0, togo = TOGO != 0, priorT = PRIOR_T != 0;
+    const float pT = (float)PRIOR_T;
+    static float rootBias[MAXS][4];                          // what the top players prefer in a move, as a fading bias at every root
+    const bool prior = PRIOR_W != 0;
+    if (prior)
+        for (int i = 0; i < NS; i++) {
+            rootBias[i][0] = rootBias[i][1] = rootBias[i][2] = rootBias[i][3] = 0;
+            if (!root.s[i].alive) continue;
+            int rm = rawMask(root, i), cnt = __builtin_popcount(rm);
+            if (cnt < 2) continue;
+            float L[4], mean = 0;
+            movePrefs(root, i, rm, L);
+            for (int d = 0; d < 4; d++)
+                if (rm >> d & 1) mean += L[d];
+            mean /= cnt;
+            for (int d = 0; d < 4; d++)
+                if (rm >> d & 1) rootBias[i][d] = (float)PRIOR_W * (L[d] - mean);
+        }
     int rootMask[MAXS];                                      // my snakes' moves at the root
     for (int i = 0; i < NS; i++) {
         if (!root.s[i].alive || OWNER[i] != 0) continue;
@@ -1301,7 +1392,18 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     mv[i] = m;
                     continue;
                 }
-                m = selectMove(pool[nd], mask, OWNER[i] == 0 ? 1.f : -1.f, nearF[i], S.s[i].head());
+                const float *bias = d == 0 && prior ? rootBias[i] : nullptr;
+                float tb[4];
+                if (d > 0 && priorT) {                         // in the tree: the static part of the preferences
+                    const uint8_t *T = nearT[i];
+                    const int hd = S.s[i].head(), f = S.s[i].facing(), t0 = T[hd];
+                    for (int q = 0; q < 4; q++) {
+                        int c = hd + DELTA[q], dd = T[c] - t0;
+                        tb[q] = pT * (-0.46f * (dd < -3 ? -3 : dd > 3 ? 3 : dd) + 1.2f * supc[c] + (q == f ? 0.49f : 0) + (q == 0 ? -0.39f : q == 2 ? -0.68f : 0));
+                    }
+                    bias = tb;
+                }
+                m = selectMove(pool[nd], mask, OWNER[i] == 0 ? 1.f : -1.f, nearF[i], S.s[i].head(), bias, (float)PRIOR_N);
                 mv[i] = m;
                 pathNode[d][i] = nd;
                 pathMove[d][i] = m;
