@@ -21,6 +21,7 @@ maps, both seats). Self-play overstates arena gains.
 | v1.9 | **tempo credit** (`EV_TEMPO` 0.1): a snake's own credit is charged the mean table distance to its nearest apple over the line, so getting there sooner counts. The switch that moved the agreement with _H3R0_'s moves most (+1.4 points) | Kaggle, real time, vs v1.8: +16, −2 (+7 ± 22) | **33.75**: the best so far | **3** |
 | v1.10 | **root prior** (`PRIOR_W` 0.05, `movePrefs`): every snake's root, ours and theirs, gets a bias toward the kind of move the top players choose (sixteen facts about a move, weights fitted on 30,000 of their decisions), fading with the visits | agreement with _H3R0_'s moves 61.9% → 63.9%; real-time self-play −17, +42; Kaggle −10, −13 | **34.25**: the best so far, with a change that is slightly negative against ourselves | **3** |
 | v1.11 | **the prior inside the whole tree** (`PRIOR_T` 0.15): at every node a fading bias from the facts that need no scan (closer to an apple by the table, onto a supported cell, straight on, not up or down); packed with `--release` (no local-tool code) | Kaggle, real time, vs v1.10 settings: weight 0.03 +20, 0.05 +45, 0.08 +36, **0.15 +63**, 0.25 +24, 0.4 −21, 0.7 −115 (400 games each); local +60 | **36.04**: 1.8 above v1.10; _H3R0_ 38.33, sZoom 38.25, fourth 32.40 | **3** |
+| v1.12 | **the root prior charges a pass** (`PRIOR_PASS` 1.5): a move after which the head is where it was (up and fall back) loses 1.5 on the preference score; the share of pass moves on 48 arena positions falls from 31% to 13% | Kaggle, real time, vs v1.11 settings, 400 games each: weight 1 +23; 1.5 +33, +10, +13; 2 +12; 2.5 +3; 4 +30 | running | |
 
 ## Measurements
 
@@ -153,6 +154,10 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | The same measured locally (`tools/passrate.py`: 48 arena positions played on by self-play): v1.8 settings; v1.9; v1.10; v1.11; with the root prior charging a pass 1 / 1.5 / 2 / 3 (`PRIOR_PASS`); "straight on" for sideways moves only in the tree (`PRIOR_SH`) | 48 positions | 13.8%; 18.2%; 29.4%; 31.3%; 18.2% / 13.1% / 11.2% / 7.6%; 28.6% |
 | Pass charge 1 and 2 with `PRIOR_SH`, real-time self-play against v1.11 settings | 100 each | −7; −49 |
 | **Freezes replayed on rails** (`tools/freeze.py`: 60 stand-stills of v1.10 / v1.11 games, 40 turns against the opponent's recorded moves), our length gained in total: without priors; v1.11 settings; pass charge 1 / 1.5 / 2.5 with `PRIOR_SH` | 60 | +244; +311; +333 / +319 / +321 |
+| Pass charge with "straight on only sideways" in the tree (`PRIOR_SH`), Kaggle: charge 1 / 1.5 / 0.6 / 2.5; `PRIOR_SH` alone | 400 each | +3, −3 / +4, −7 / −11 / −10; −23: the tree tweak cancels the gain, dropped |
+| Around the pass charge 1.5: in-tree weight 0.12 / 0.2; root weight 0.08; tempo 0.15 | 400 each | −4 / −10; +11; −23 |
+| v1.11 in the arena against the top two: record; wall hits a game (ours / theirs) | 29 games | _H3R0_ +5 −8 =1, sZoom +2 −11 =2; 0.14 / 0.07 (v1.8: 0.45 / 0.03) |
+| Preferences fitted on the facts the tree has (distance change, target on a wall or apple, straight, up, down, apple): held-out accuracy on both players' decisions | 18.7k | 61.6% with six facts: distance −0.42 a cell, support +1.05, straight +0.42, down −0.57, apple +1.00 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -542,6 +547,12 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   (± 2.2 on the margin after 22 pairs) and spend the daily quota of 600 test games in a
   few hours; the IDE mirror of a submit needs a test game too and waits when the quota is
   gone. The quota is for sanity games and dumps.
+
+- **The prior inside the tree was the largest arena gain since v1.3**: 34.25 → 36.04, 73%
+  of the battles won, and against _H3R0_ 5 wins in 14 where it had been 1 in 5. The wall
+  hits against the top two fell to a third. It costs a few table lookups per node.
+  Six facts about a move, with weights read off the top players' games, are worth more
+  than every evaluation term added since the net.
 
 ## Arena notes
 
