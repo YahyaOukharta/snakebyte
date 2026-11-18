@@ -350,6 +350,7 @@ PARAM(THREAT_E, 0);       // ... and only against enemy snakes longer than this
 PARAM(NEAR_M, 0);         // tempo credit and in-tree prior: apples an enemy snake reaches this many moves sooner are not targets (0 = off)
 PARAM(PRIOR_PH, 0);        // root prior by phase: 1 = endgame weights with at most PH_A apples left, 2 = also the pre-endgame fit before
 PARAM(PH_A, 6);
+PARAM(PRIOR_T3, 0);       // the in-tree prior before the endgame takes the weights fitted on 13+ and on 7-12 apples left
 PARAM(PRIOR_TL, 0);       // the in-tree prior takes its weights from the endgame fit with at most PH_A apples left
 PARAM(LAST_AP, 0);        // root: my snakes do not eat the last apple when the game would end lost
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
@@ -1473,7 +1474,11 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
     const bool tempo = EV_TEMPO != 0, passOn = EV_PASS != 0, togo = TOGO != 0, priorT = PRIOR_T != 0;
     const float pT = (float)PRIOR_T;
     const bool lateT = PRIOR_TL != 0 && root.napples <= PH_A;   // in-tree weights from the endgame fit
-    const float kD = lateT ? -0.32f : -0.46f, kSup = lateT ? 1.09f : 1.2f, kUp = lateT ? -0.25f : -0.39f, kDn = lateT ? -0.54f : -0.68f, kSn = lateT ? 0.99f : 0;
+    float kD = lateT ? -0.32f : -0.46f, kSup = lateT ? 1.09f : 1.2f, kUp = lateT ? -0.25f : -0.39f, kDn = lateT ? -0.54f : -0.68f, kSn = lateT ? 0.99f : 0;
+    if (PRIOR_T3 != 0 && !lateT) {                           // the earlier phases from their own fits
+        if (root.napples >= 13) kD = -0.40f, kSup = 1.1f, kUp = 0.12f, kDn = -1.05f, kSn = 0.1f;
+        else kD = -0.36f, kSup = 1.23f, kUp = -0.13f, kDn = -0.79f, kSn = 0.6f;
+    }
     const bool sh = PRIOR_SH != 0;
     const float pTS = (float)PRIOR_TS;
     const float pTA = (float)PRIOR_TA, pTN = (float)(PRIOR_TN != 0 ? PRIOR_TN : PRIOR_N);
