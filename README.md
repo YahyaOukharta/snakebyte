@@ -6,7 +6,7 @@ byte board, a Smitsimax search (one tree per snake) and a handcrafted evaluation
 gravity-aware distances and per-snake credit.
 
 Started at rank 328 of 394 in Legend (17.91) with the March 2026 contest bot
-(`league/src/legacy.cpp`). Current: v1.10 (root prior from the top players' move preferences), in its arena run (2026-11-18); v1.9 finished at **33.75, rank 3**; best finished scores 33.68 (v1.4b) and 33.61 (v1.5), rank 3. Per-version results and every measurement: [docs/history.md](docs/history.md).
+(`league/src/legacy.cpp`). Current: v1.11 (the prior inside the whole tree), in its arena run (2026-11-18); v1.10 finished at **34.25, rank 3**, the best so far; best finished scores 33.68 (v1.4b) and 33.61 (v1.5), rank 3. Per-version results and every measurement: [docs/history.md](docs/history.md).
 
 | Stage | Arena score | Rank (Legend) |
 |---|---|---|
@@ -21,7 +21,8 @@ Started at rank 328 of 394 in Legend (17.91) with the March 2026 contest bot
 | v1.7: plain trees, the earlier net again | replaced | |
 | v1.8: room of each snake, standing on snakes counts as support | 33.06 | 3 |
 | v1.9: tempo credit | 33.75 | 3 |
-| v1.10: root prior fitted on the top players' moves | running | |
+| v1.10: root prior fitted on the top players' moves | 34.25 | 3 |
+| v1.11: the same prior at every node of the tree | running | |
 
 The arena's first two (_H3R0_ 36.9, sZoom 36.8) are five points clear of the third (31.9).
 

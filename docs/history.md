@@ -19,7 +19,8 @@ maps, both seats). Self-play overstates arena gains.
 | v1.7 | v1.5's source with plain trees and the net n2a again (the net that scored 33.6–33.7); root safety and survival checks in the source, off | | replaced by v1.8 during its run (30.4 at 15% was the last reading) | |
 | v1.8 | **room of each snake** (cells its head reaches in 4 moves, a cost under 8: `EV_SPACE` 1) and **standing on another snake counts as support** when a snake's reach is read (`SNK_SUP`); packed without comment lines | real time vs the same build without them: room +70, +35, −56; support +14, +56, −24, +85 (+33 ± 31); both +45; the packed file vs v1.7 +21 (50 games). Submitted at the user's wish | **33.06**; against the top two the wall hits did not fall (0.45 a game, theirs 0.03); sZoom +0 −13 =3, _H3R0_ +3 −11 =1 | **3** |
 | v1.9 | **tempo credit** (`EV_TEMPO` 0.1): a snake's own credit is charged the mean table distance to its nearest apple over the line, so getting there sooner counts. The switch that moved the agreement with _H3R0_'s moves most (+1.4 points) | Kaggle, real time, vs v1.8: +16, −2 (+7 ± 22) | **33.75**: the best so far | **3** |
-| v1.10 | **root prior** (`PRIOR_W` 0.05, `movePrefs`): every snake's root, ours and theirs, gets a bias toward the kind of move the top players choose (sixteen facts about a move, weights fitted on 30,000 of their decisions), fading with the visits | agreement with _H3R0_'s moves 61.9% → 63.9%; real-time self-play −17, +42 | running | |
+| v1.10 | **root prior** (`PRIOR_W` 0.05, `movePrefs`): every snake's root, ours and theirs, gets a bias toward the kind of move the top players choose (sixteen facts about a move, weights fitted on 30,000 of their decisions), fading with the visits | agreement with _H3R0_'s moves 61.9% → 63.9%; real-time self-play −17, +42; Kaggle −10, −13 | **34.25**: the best so far, with a change that is slightly negative against ourselves | **3** |
+| v1.11 | **the prior inside the whole tree** (`PRIOR_T` 0.15): at every node a fading bias from the facts that need no scan (closer to an apple by the table, onto a supported cell, straight on, not up or down); packed with `--release` (no local-tool code) | Kaggle, real time, vs v1.10 settings: weight 0.03 +20, 0.05 +45, 0.08 +36, **0.15 +63**, 0.25 +24, 0.4 −21, 0.7 −115 (400 games each); local +60 | running | |
 
 ## Measurements
 
@@ -147,6 +148,11 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | The static part of the preferences inside the whole tree (`PRIOR_T` 0.06) | 200 | agreement +0.4; self-play +38, −17 |
 | **Preference net** (28 facts of a move → 16 → score, `moveFeatures` / `prefNet`, 480 weights): held-out decisions of _H3R0_; of sZoom; both | 8.9k / 9.8k / 18.7k | 63.7%; 72.9%; **68.6%** (our search without a prior 61.2%) |
 | The net as the root prior, weight 0.03 / 0.06 / 0.12 / 0.25: agreement with _H3R0_; weight 0.06 against the linear prior in real-time self-play | — ; 200 | 65.0% / 66.0% / **66.3%** / 66.1% (no prior 61.9%, linear 63.9%); +17, +35 |
+| Net root prior against the linear one in ordinary play (Kaggle, real time): weight 0.06 twice; 0.03; 0.1; linear at 0.025; in-tree 0.15 with the net root prior | 400 each | −10, +19; +20; −12; +29; +18: level |
+| **Pass moves and frozen snakes per version** (arena games, turns 12+): share of our snake moves that leave the head where it was / share of snake-turns inside a stand-still of 10 turns or more / games with a frozen snake of ours. v1.3–v1.8; v1.9; v1.10; v1.11 (first 32 games). Opponents | — | 15–17% / 3–5% / 23–36%; 18% / 5% / 46%; **27% / 15% / 64%**; **40% / 27% / 66%**. Opponents 17–22% / 6–10% |
+| The same measured locally (`tools/passrate.py`: 48 arena positions played on by self-play): v1.8 settings; v1.9; v1.10; v1.11; with the root prior charging a pass 1 / 1.5 / 2 / 3 (`PRIOR_PASS`); "straight on" for sideways moves only in the tree (`PRIOR_SH`) | 48 positions | 13.8%; 18.2%; 29.4%; 31.3%; 18.2% / 13.1% / 11.2% / 7.6%; 28.6% |
+| Pass charge 1 and 2 with `PRIOR_SH`, real-time self-play against v1.11 settings | 100 each | −7; −49 |
+| **Freezes replayed on rails** (`tools/freeze.py`: 60 stand-stills of v1.10 / v1.11 games, 40 turns against the opponent's recorded moves), our length gained in total: without priors; v1.11 settings; pass charge 1 / 1.5 / 2.5 with `PRIOR_SH` | 60 | +244; +311; +333 / +319 / +321 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -518,6 +524,24 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   way to give a prior (they take the exploration away: −0.8 with no prior at all); a bias
   inside the selection formula that fades with the visits is the right one.
 - sZoom is far more predictable than _H3R0_ (73% against 64% for the same net).
+
+- **The priors made the snakes stand still, and the standing still is mostly not the
+  loss.** "Straight on" for a vertical snake is up, and up is falling back: with the root
+  prior the share of pass moves went from 18% to 27% and with the in-tree prior to 40%,
+  and two games in three had a snake of ours frozen for ten turns or more. A game the
+  user pointed at (19–35 against putibuzu) had three of our four snakes motionless from
+  turn 30. But in that game those three (lengths 3, 5 and 4) had no apple in reach by the
+  tables: the apples left were high and the opponent's snakes were all 6 or longer. And
+  on 60 replayed freezes the builds with the priors gain more length than the one without
+  (+311 against +244); charging the pass in the prior adds a little (+333). The fault
+  behind the freeze is the old one: he grows every snake early, we leave some short.
+- **The arena confirmed the first change that self-play could not have found.** The root
+  prior is slightly negative against a copy of ourselves (−10, −13 over 800 games) and
+  finished half a point above v1.9 in the arena.
+- Twenty to forty paired replays against one player do not resolve half an arena point
+  (± 2.2 on the margin after 22 pairs) and spend the daily quota of 600 test games in a
+  few hours; the IDE mirror of a submit needs a test game too and waits when the quota is
+  gone. The quota is for sanity games and dumps.
 
 ## Arena notes
 
