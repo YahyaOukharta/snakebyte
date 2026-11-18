@@ -24,7 +24,8 @@ maps, both seats). Self-play overstates arena gains.
 | v1.12 | **the root prior charges a pass** (`PRIOR_PASS` 1.5): a move after which the head is where it was (up and fall back) loses 1.5 on the preference score; the share of pass moves on 48 arena positions falls from 31% to 13% | Kaggle, real time, vs v1.11 settings, 400 games each: weight 1 +23; 1.5 +33, +10, +13; 2 +12; 2.5 +3; 4 +30 | **34.95**: 1.1 under v1.11, reverted | 3 |
 | v1.11 again | the same file resubmitted after v1.12 | | **35.54**: with the first run, v1.11 is about 35.8 and v1.12's 34.95 a real step down | 3 |
 | v1.13 | v1.11 with the **value net n4c**: trained on self-play (generation 3) plus the 1,848 replayed arena games three times and the 331 games against the top two five more times | Kaggle, real time, vs n2a: +30, +27, +45, +10 (**+28 ± 15**, 1600 games) | **34.97** (+94 −48 =17, 64.5%; v1.11's rerun 68.2%): the Kaggle gain did not carry over. Reverted | 3 |
-| v1.14 | v1.11 (net n2a) with the root prior weight 0.05 → 0.08 | agreement with _H3R0_'s moves 63.3% → 64.3% measured by mistake without the net; with it 63.45 → 63.57, sZoom 64.85 → 65.57; self-play −4 ± 30. Same signature as v1.10, which self-play disliked and the arena liked | running | |
+| v1.14 | v1.11 (net n2a) with the root prior weight 0.05 → 0.08 | agreement with _H3R0_'s moves 63.3% → 64.3% measured by mistake without the net; with it 63.45 → 63.57, sZoom 64.85 → 65.57; self-play −4 ± 30. Same signature as v1.10, which self-play disliked and the arena liked | **34.55** (+91 −51 =17, 62.6%). Reverted | 3 |
+| v1.11, third run | resubmitted after v1.14: three changes in a row (pass charge, real-games net, prior weight) finished at 34.5–35.0 against v1.11's 36.04 and 35.54 | | running | |
 
 ## Measurements
 
@@ -168,6 +169,8 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | On v1.11 (net n2a), Kaggle real time: no net (NET_A 0), two runs; no net with EV_K 6 / 11; NET_A 1.2; PRIOR_W 0.08 / 0.12 (two runs) / 0.2; TIME_MS 44 | 400 each | −70, −94; −89 / −76; −26; −4 / −24, −23 / −92; **+36** (6 ms more search: the budget is worth more than the 1% of games lost to machine stalls) |
 | Agreement with the top players' real moves, 210 + 235 games, net loaded: base; PRIOR_W 0.08 / 0.12 / 0.2; NET_A 3. Without the net: base | 25.7k / 29.8k decisions | _H3R0_ 63.45; 63.57 / 63.84 / 63.67; 63.08. sZoom 64.85; 65.57 / 66.34 / 67.09. No net: 63.26 / 63.25: the net adds nothing on _H3R0_'s moves and 1.6 points on sZoom's |
 | Timeouts of our seat in the arena, v1.11 rerun + v1.13; share of turns over 40 / 50 / 60 ms at a 38 ms budget | 318 games; 50,661 turns | 3 (one with the opponent timing out on the same turn); 0.43% / 0.10% / 0.01% |
+| `PRIOR_E` (root prior of the enemy's snakes × 2 / 3 / 4 / 6 / 0.5 / 0), Kaggle real time, two runs each where two are given | 400 each | −5, −22 / −18, −6 / −29, +4 / +10, +7 / −22 / −13: noise, as self-play must be for a model of another player |
+| `PRIOR_E` 4 against v1.11 in paired replays against the live sZoom and _H3R0_ bots | 65 pairs | margin +0.18 ± 1.31, wins 13 : 13. Level |
 | Late-game agreement (from turn 40) with reach tables up to length 16 / 20; unreachable gradient; stuck cost 0.5: sZoom; _H3R0_ | 14.9k / 12.9k decisions | +0.4 / +0.4; +0.3; +0.9. −0.2 / −0.3; −0.1; −0.5 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
