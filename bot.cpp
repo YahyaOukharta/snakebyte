@@ -341,8 +341,10 @@ PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy hea
 PARAM(TOGO, 0);           // 1: a node is backed up with what happened from it on (the gains made before it are taken out); for merged nodes, whose visits have different pasts
 PARAM(MERGE, 0);          // state merging: a snake's node is (depth mod MERGE, head cell, facing) whatever path led there; 0 = plain trees. 2 = by parity, 16 = by depth
 PARAM(PRIOR_W, 0.05);        // root prior: value per unit of the move-preference score fitted on the top players' moves (0 = off)
+PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
+PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
 PARAM(PRIOR_NET, 0);      // 1: the root prior comes from the preference net (prefNet) instead of the sixteen linear weights
-PARAM(PRIOR_T, 0);        // the same inside the tree, from the facts that need no scan: closer to an apple, onto a supported cell, straight on, up / down
+PARAM(PRIOR_T, 0.15);        // the same inside the tree, from the facts that need no scan: closer to an apple, onto a supported cell, straight on, up / down
 PARAM(PRIOR_N, 100);      // ... fading with the visits of the move: x PRIOR_N / (PRIOR_N + visits)
 PARAM(EV_DEAD, 0);        // cost for a snake whose head is on a cell from which, even standing supported, it reaches no apple (a dead zone for its length)
 PARAM(EV_D2, 0);          // cost per cell between the nearest and the second nearest apple (capped at 10): prefer clusters
@@ -1432,6 +1434,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         }
     const bool tempo = EV_TEMPO != 0, passOn = EV_PASS != 0, togo = TOGO != 0, priorT = PRIOR_T != 0;
     const float pT = (float)PRIOR_T;
+    const bool sh = PRIOR_SH != 0;
     static float rootBias[MAXS][4];                          // what the top players prefer in a move, as a fading bias at every root
     const bool prior = PRIOR_W != 0;
     if (prior)
@@ -1445,6 +1448,16 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                 for (int d = 0; d < 4; d++)
                     if (rm >> d & 1) { float f[NPF]; moveFeatures(root, i, d, f); L[d] = prefNet(f); }
             } else movePrefs(root, i, rm, L);
+            if (PRIOR_PASS != 0)                                 // a move that brings the snake back to where it is gains nothing
+                for (int d = 0; d < 4; d++) {
+                    if (!(rm >> d & 1)) continue;
+                    State T = root;
+                    int8_t m[MAXS];
+                    for (int j = 0; j < NS; j++) m[j] = T.s[j].alive ? T.s[j].facing() : 0;
+                    m[i] = d;
+                    T.step(m);
+                    if (T.s[i].alive && T.s[i].head() == root.s[i].head() && T.s[i].len == root.s[i].len) L[d] -= (float)PRIOR_PASS;
+                }
             for (int d = 0; d < 4; d++)
                 if (rm >> d & 1) mean += L[d];
             mean /= cnt;
@@ -1513,7 +1526,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     const int hd = S.s[i].head(), f = S.s[i].facing(), t0 = T[hd];
                     for (int q = 0; q < 4; q++) {
                         int c = hd + DELTA[q], dd = T[c] - t0;
-                        tb[q] = pT * (-0.46f * (dd < -3 ? -3 : dd > 3 ? 3 : dd) + 1.2f * supc[c] + (q == f ? 0.49f : 0) + (q == 0 ? -0.39f : q == 2 ? -0.68f : 0));
+                        tb[q] = pT * (-0.46f * (dd < -3 ? -3 : dd > 3 ? 3 : dd) + 1.2f * supc[c] + (q == f && (!sh || (q & 1)) ? 0.49f : 0) + (q == 0 ? -0.39f : q == 2 ? -0.68f : 0));
                     }
                     bias = tb;
                 }
@@ -1735,6 +1748,7 @@ int main() {
 #ifdef LOCAL
         // SB_BENCH=ITERS: self-play from this position at fixed iterations, report the speed
         if (getenv("SB_BENCH")) {
+            long benchPass = 0, benchMoves = 0;
             fixedIters = atol(getenv("SB_BENCH"));
             long sims = 0, its = 0;
             double ms = 0;
@@ -1748,10 +1762,15 @@ int main() {
                 search(b, 0, m);
                 ms += chrono::duration<double, milli>(chrono::steady_clock::now() - t1).count();
                 sims += lastSims, its += lastIters;
+                int hb[MAXS], lb[MAXS];
+                for (int i = 0; i < NS; i++) hb[i] = b.s[i].alive ? b.s[i].head() : -1, lb[i] = b.s[i].len;
                 b.step(m);
+                for (int i = 0; i < NS; i++)
+                    if (hb[i] >= 0 && b.s[i].alive) benchMoves++, benchPass += b.s[i].head() == hb[i] && b.s[i].len == lb[i];
             }
             printf("bench: %d turns, %ld iterations, %ld sims, %.0f ms, %.0f sims/s, %.0f ns/sim, score %d-%d\n", b.turn, its, sims,
                    ms, sims / ms * 1000, ms * 1e6 / sims, b.len[0], b.len[1]);
+            printf("passes: %ld of %ld snake moves (%.1f%%)\n", benchPass, benchMoves, 100.0 * benchPass / (benchMoves ? benchMoves : 1));
 #ifdef PROF
             uint64_t tot = 0;
             for (int k = 0; k < P_N; k++) tot += prof[k];

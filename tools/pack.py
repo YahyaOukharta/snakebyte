@@ -18,6 +18,7 @@ ap.add_argument("-o", "--out", required=True)
 ap.add_argument("-D", action="append", default=[], help="NAME=VALUE: replace the default of a PARAM")
 ap.add_argument("src", nargs="?", default=os.path.join(ROOT, "bot.cpp"))
 ap.add_argument("--release", action="store_true", help="drop the blocks of the local tools (LOCAL, DUMP, PROF, SLOWFALL)")
+ap.add_argument("--keep", action="store_true", help="strip nothing (a file for gates, over the size limit)")
 a = ap.parse_args()
 src = open(a.src).read()
 m = re.search(r"enum \{ NF_G = (\d+), NF_S = (\d+), NF = NF_G \+ 8 \* NF_S, NH1 = (\d+), NH2 = (\d+) \}", src)
@@ -40,7 +41,8 @@ for d in a.D:
     src, k = re.subn(r"PARAM\(%s, [^)]*\)" % name, f"PARAM({name}, {val})", src)
     assert k == 1, name
 head = f'#define NETW_DATA "{data}"\n#define NETW_SCALES {", ".join("%.9gf" % s for s in scales)}\n'
-if "--release" in sys.argv or len(head) + len(src) > 96000:     # the code of the local tools is not needed on CodinGame
+KEEP = "--keep" in sys.argv                                    # for local and Kaggle gates: nothing is stripped, the file takes SB_ parameters
+if not KEEP and ("--release" in sys.argv or len(head) + len(src) > 96000):     # the code of the local tools is not needed on CodinGame
     keep, stack = [], []
     for l in src.split("\n"):
         t = l.strip()
@@ -56,13 +58,13 @@ if "--release" in sys.argv or len(head) + len(src) > 96000:     # the code of th
         if "off" in stack: continue
         keep.append(l)
     src = "\n".join(keep)
-if len(head) + len(src) > 96000:                              # CodinGame takes 100,000 characters: drop the comments at
+if not KEEP and len(head) + len(src) > 96000:                 # CodinGame takes 100,000 characters: drop the comments at
     lines = []                                                # the end of code lines, keep the ones on their own lines
     for l in src.split("\n"):
         m = None if l.lstrip().startswith("//") else re.search(r'\s+//(?=(?:[^"]*"[^"]*")*[^"]*$)', l)
         lines.append(l[:m.start()] if m else l)
     src = "\n".join(lines)
-if len(head) + len(src) > 96000:                              # still too long: the comment lines go too (the header stays)
+if not KEEP and len(head) + len(src) > 96000:                 # still too long: the comment lines go too (the header stays)
     lines = src.split("\n")
     src = "\n".join(l for k, l in enumerate(lines) if k < 5 or not l.lstrip().startswith("//"))
 out = head + src
