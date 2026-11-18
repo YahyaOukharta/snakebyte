@@ -787,7 +787,7 @@ static int traceGame(const char *path, int dumpTurn = -1) {
             for (int p = 0; p < 2; p++) features(S, p, rec.data() + p * (NF + 3));
             featRec.push_back(rec);
         }
-        if (agreeEvery && t >= 4 && t % agreeEvery == 0) {
+        if (agreeEvery && t >= (getenv("SB_AGMIN") ? atoi(getenv("SB_AGMIN")) : 4) && t % agreeEvery == 0) {
             int8_t out[MAXS];
             haveTrees = false;
             search(S, 0, out);
