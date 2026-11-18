@@ -348,6 +348,8 @@ PARAM(THREAT_L, 0);       // ... only for my snakes of at most this length (3: t
 PARAM(THREAT_A, 0);       // ... and only with at most this many apples left (0 = always)
 PARAM(THREAT_E, 0);       // ... and only against enemy snakes longer than this
 PARAM(NEAR_M, 0);         // tempo credit and in-tree prior: apples an enemy snake reaches this many moves sooner are not targets (0 = off)
+PARAM(PRIOR_PH, 0);        // root prior by phase: 1 = endgame weights with at most PH_A apples left, 2 = also the pre-endgame fit before
+PARAM(PH_A, 6);
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
 PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
 PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
@@ -1474,6 +1476,18 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
             if (PRIOR_NET != 0) {
                 for (int d = 0; d < 4; d++)
                     if (rm >> d & 1) { float f[NPF]; moveFeatures(root, i, d, f); L[d] = prefNet(f); }
+            } else if (PRIOR_PH != 0 && (PRIOR_PH >= 2 || root.napples <= PH_A)) {   // phase weights: fitted apart on the top two's moves with few apples left and before
+                static const float WL[2][23] = {
+                    {-0.58f, -2.57f, 1.99f, -0.53f, 1.46f, 1.53f, 0.07f, 0.03f, -0.37f, -1.26f, 0.13f, 0.82f, -0.17f, 1.20f, 0.29f, 0.06f, -0.95f, 0.47f, -0.53f, -0.59f, 2.17f, 0.73f, -0.42f},
+                    {-0.32f, -0.84f, 0.57f, -0.44f, -0.26f, 0.15f, 0.29f, 0.22f, -0.94f, -1.56f, 0.11f, 0.42f, -0.18f, 1.09f, 0.99f, -0.25f, -0.54f, 0.47f, -1.30f, -0.73f, 1.20f, 1.06f, -1.53f}};
+                const float *w = WL[root.napples <= PH_A];
+                for (int d = 0; d < 4; d++)
+                    if (rm >> d & 1) {
+                        float f[NPF], v = 0;
+                        moveFeatures(root, i, d, f);
+                        for (int k = 0; k < 23; k++) v += w[k] * f[k];
+                        L[d] = v;
+                    }
             } else movePrefs(root, i, rm, L);
             if (PRIOR_PASS != 0)                                 // a move that brings the snake back to where it is gains nothing
                 for (int d = 0; d < 4; d++) {
