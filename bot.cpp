@@ -341,6 +341,7 @@ PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy hea
 PARAM(TOGO, 0);           // 1: a node is backed up with what happened from it on (the gains made before it are taken out); for merged nodes, whose visits have different pasts
 PARAM(MERGE, 0);          // state merging: a snake's node is (depth mod MERGE, head cell, facing) whatever path led there; 0 = plain trees. 2 = by parity, 16 = by depth
 PARAM(PRIOR_W, 0.05);        // root prior: value per unit of the move-preference score fitted on the top players' moves (0 = off)
+PARAM(PRIOR_NET, 0);      // 1: the root prior comes from the preference net (prefNet) instead of the sixteen linear weights
 PARAM(PRIOR_T, 0);        // the same inside the tree, from the facts that need no scan: closer to an apple, onto a supported cell, straight on, up / down
 PARAM(PRIOR_N, 100);      // ... fading with the visits of the move: x PRIOR_N / (PRIOR_N + visits)
 PARAM(EV_DEAD, 0);        // cost for a snake whose head is on a cell from which, even standing supported, it reaches no apple (a dead zone for its length)
@@ -1257,6 +1258,106 @@ static void movePrefs(const State &S, int i, int rm, float *L) {
     }
 }
 
+// Facts about one legal move of snake i, for the preference net (training reads exactly
+// these numbers: tools/referee.cpp prints them, tools/prefs.py fits them).
+enum { NPF = 28, NPH = 16 };
+static void moveFeatures(const State &S, int i, int d, float *f) {
+    int l, r;
+    reachIdx(S, i, l, r);
+    const int hd = S.s[i].head(), c = hd + DELTA[d], ln = S.s[i].len;
+    auto near = [&](int cell, int &d2) {
+        int b = 255;
+        d2 = 255;
+        const uint8_t *row = GDROW(l, 0, cell);
+        for (int a = 0; a < nApple0; a++) {
+            if (S.occ[appleCell[a]] != APPLE) continue;
+            int v = row[a];
+            if (v < b) d2 = b, b = v;
+            else if (v < d2) d2 = v;
+        }
+        return b;
+    };
+    int t, d0 = near(hd, t), d2, d1 = near(c, d2), e0 = 99, e1 = 99, eLen = 0, freeN = 0, room = 0, apNear = 0;
+    bool mate = false, enemy = false;
+    for (int j = 0; j < NS; j++) {
+        if (!S.s[j].alive || j == i) continue;
+        int dj = abs(cx(S.s[j].head()) - cx(c)) + abs(cy(S.s[j].head()) - cy(c));
+        if (OWNER[j] != OWNER[i]) {
+            e0 = min(e0, abs(cx(S.s[j].head()) - cx(hd)) + abs(cy(S.s[j].head()) - cy(hd)));
+            if (dj < e1) e1 = dj, eLen = S.s[j].len;
+            enemy |= dj == 1;
+        } else mate |= dj == 1;
+    }
+    for (int q = 0; q < 4; q++)
+        if (c + DELTA[q] != hd && S.occ[c + DELTA[q]] < WALL) freeN++;
+    {                                                        // cells reached from the target in 4 steps without passing the head
+        static uint16_t q[256];
+        static uint8_t seen[CELLS];
+        static int stamp[CELLS], st = 0;
+        st++;
+        int qh = 0, qt = 0;
+        q[qt++] = c, seen[c] = 1, stamp[c] = st, stamp[hd] = st, seen[hd] = 9;
+        while (qh < qt && qt < 200) {
+            int x = q[qh++];
+            if (seen[x] > 4) continue;
+            for (int k = 0; k < 4 && qt < 200; k++) {
+                int y = x + DELTA[k];
+                if (stamp[y] == st || S.occ[y] >= WALL) continue;
+                stamp[y] = st, seen[y] = seen[x] + 1, q[qt++] = y, room++;
+            }
+        }
+    }
+    for (int a = 0; a < nApple0; a++)
+        if (S.occ[appleCell[a]] == APPLE && abs(cx(appleCell[a]) - cx(c)) + abs(cy(appleCell[a]) - cy(c)) <= 3) apNear++;
+    const bool un0 = d0 == 255, un1 = d1 == 255;
+    const uint8_t above = S.occ[c - STRIDE], below = S.occ[c + STRIDE];
+    int k = 0;
+    { int dd = d1 - d0; f[k++] = un0 || un1 ? 0 : dd < -3 ? -3 : dd > 3 ? 3 : dd; }
+    f[k++] = un1 && !un0, f[k++] = !un1 && un0;
+    { int g = (d2 > 30 ? 30 : d2) - (d1 > 30 ? 30 : d1); f[k++] = un1 ? 0 : (g < 0 ? 0 : g > 10 ? 10 : g) / 10.0f; }
+    f[k++] = un1 ? 1.5f : (d1 > 30 ? 30 : d1) / 20.0f;
+    f[k++] = S.occ[c] == APPLE, f[k++] = freeN == 0, f[k++] = freeN == 1, f[k++] = enemy, f[k++] = mate;
+    { int x = e0 - e1; f[k++] = x < -1 ? -1 : x > 1 ? 1 : x; }
+    f[k++] = (e1 > 8 ? 8 : e1) / 8.0f;
+    f[k++] = above >= SNAKE && OWNER[above - SNAKE] != OWNER[i];
+    f[k++] = below == WALL || below == APPLE, f[k++] = below >= SNAKE;
+    f[k++] = d == 0, f[k++] = d == 2, f[k++] = d == S.s[i].facing();
+    f[k++] = (room > 30 ? 30 : room) / 30.0f, f[k++] = room < 6, f[k++] = (apNear > 5 ? 5 : apNear) / 5.0f;
+    f[k++] = enemy && ln > eLen, f[k++] = enemy && ln <= 3;
+    { int ld = S.len[OWNER[i]] - S.len[1 - OWNER[i]]; f[k++] = (ld < -10 ? -10 : ld > 10 ? 10 : ld) / 10.0f; }
+    f[k++] = (H - cy(c)) / 24.0f, f[k++] = (ln > 12 ? 12 : ln) / 12.0f, f[k++] = (S.napples > 40 ? 40 : S.napples) / 40.0f, f[k++] = S.turn / 200.0f;
+}
+/*PREFNET*/
+// Preference net fitted by tools/prefs.py on the top players' decisions: NPF facts -> NPH -> score.
+static const float PFW1[NPH][NPF] = {
+    {-0.2414, 1.23, -0.04049, -0.3062, -0.4153, 0.301, -0.2268, -0.6707, -0.03381, 0.6554, -0.02781, 0.485, -0.1887, -1.271, -0.5105, -0.0684, -0.2879, -0.05611, 1.739, -0.5254, 0.6774, 0.6131, 1.318, 0.08309, -0.1634, 0.6434, 0.8559, -0.1927},
+    {-0.908, -0.5446, 0.1175, -0.03732, -0.3234, 0.152, 0.1613, 0.09035, 0.05405, 0.4283, -0.0249, 0.2492, 0.4531, 0.09141, 0.2479, -0.07054, -1.087, -0.02897, 0.09032, -0.1756, 2.075, -0.4213, 0.3419, -0.03596, 0.2847, 0.2433, 0.1805, 0.3912},
+    {-0.02388, -0.2191, 0.2763, 0.0666, 0.05896, 0.1489, 0.8798, 0.5074, -0.1323, -0.2484, 0.006335, -0.6322, 0.6403, -0.4929, 0.448, -0.4867, -0.2822, -0.1169, -1.177, -0.6762, -0.098, 0.1583, -1.311, -0.1618, -0.1893, 0.4001, 0.3455, -0.5609},
+    {0.2265, 0.8248, -0.09902, -0.07408, -0.005707, -0.4681, -0.4429, -0.9173, -0.04951, 0.8753, 0.01063, -0.1494, -0.07299, -0.6582, -0.8221, 0.8841, 0.008638, -0.6108, -0.1546, -0.5832, 0.5512, 1.169, -0.1055, 1.2, 0.8917, 0.3547, -0.3353, 0.2056},
+    {-0.4233, -0.2854, -1.444, 1.048, -0.4016, -0.1495, -0.9277, -0.452, 0.7877, -0.06459, -0.01812, 0.2941, -0.2587, -0.194, 0.2399, 0.6122, -0.2948, -0.2235, 1.229, 1.115, 0.5362, 0.1172, -0.2376, 1.511, 0.04649, 0.8566, 1.384, -1.417},
+    {0.02077, 0.528, 0.02557, 0.2243, 0.01071, 0.2774, -0.48, -0.3634, 0.4925, 0.5799, -0.01394, 1.148, -0.2468, -0.8495, -0.08785, 0.006964, 0.5033, -0.08669, 0.9318, 0.5084, -0.5725, -0.1823, 1.049, -0.01947, -0.5753, 0.1552, -0.5892, 0.4866},
+    {-0.1309, -0.1726, 0.01223, -0.4598, 0.006482, 1.769, 0.07965, -0.01294, 0.5446, 0.9123, -0.01446, 0.3265, -0.2583, 0.5449, -1.215, 0.3135, -0.2302, -0.01414, 0.4611, -0.05218, 0.2042, -0.7724, 0.2398, 0.3015, 0.5415, -0.06557, -0.1444, -3.031},
+    {0.7092, 0.6595, -0.5389, -0.2673, 0.4212, -0.844, -0.3681, -0.003486, 0.572, -0.8772, -0.01071, -0.1475, -0.6825, 0.4899, 0.02297, 0.2429, 0.02649, 0.3319, 0.7904, 0.05535, 0.5985, -0.5973, 0.5788, -0.1915, -0.2757, -0.006185, 0.5075, -0.4974},
+    {0.1799, 0.1706, 0.2225, -0.07924, 0.5957, 0.3403, 0.01175, 0.1761, 0.2107, -1.076, 0.08303, -0.3099, -0.3221, 0.5124, 0.4782, 0.03159, -1.024, 0.07621, 0.8674, -0.4962, -0.03922, 0.8153, 0.4537, 0.03508, 0.1671, 0.05997, 0.5162, -0.5167},
+    {0.05907, 0.8715, -0.7442, -0.2883, -0.08083, 0.4562, -0.9012, -0.4274, 0.8996, -0.5702, -0.04804, 0.1745, -0.6118, -0.2869, 0.2708, 0.6527, 0.4748, -0.1212, 0.03986, 0.2241, 1.418, 0.5653, 0.4818, 0.4574, -0.1811, -0.5112, -0.2389, 0.02287},
+    {-0.5069, 0.04084, 0.3593, 0.01336, -0.655, 0.1917, 0.6338, 0.1118, 0.3891, -0.1555, 0.01534, 0.321, 0.946, 0.2425, 0.004757, -0.7901, -0.05848, 0.242, -0.1021, -0.01675, -0.4263, -0.536, 0.2056, 0.05219, 0.0333, 0.1953, -0.07975, 0.3601},
+    {-0.02175, 2.231e-19, 1.276e-20, -0.02296, -0.02945, -4.615e-20, 6.342e-19, -3.81e-20, -3.484e-19, -1.412e-19, 0.02505, 0.0008677, -2.401e-19, -1.904e-18, 1.774e-14, 3.437e-21, 0.004407, 1.617e-19, -0.09036, -5.09e-19, -0.002137, -1.11e-19, -2.906e-20, 0.0006905, 0.04364, -0.09493, -0.02391, -0.01097},
+    {0.1212, 0.1805, -0.2941, -0.2503, -0.2992, 0.2903, 0.3436, 0.1084, -0.02644, 0.7505, -0.05003, 0.2964, 0.1398, 0.07236, -0.4088, -0.08379, 0.9011, -0.7612, -0.2034, 0.1417, -0.1843, -0.04874, 0.09079, 0.1758, -0.2295, 0.03531, -0.09337, -0.7704},
+    {0.1225, -0.787, 0.2081, 0.2299, -0.1205, -1.479, 0.4856, 0.4498, 0.1783, -0.7035, -0.02413, 0.2482, 0.03206, 1.058, 0.7671, -0.01457, 0.03412, -0.06285, -0.561, -0.06172, -0.5497, -0.2902, -1.568, -0.01429, 0.3296, -0.7178, -0.3188, 1.268},
+    {-0.2722, -0.3042, 0.5586, 0.02543, -0.135, 0.7756, -0.2512, 0.03144, 0.8314, 0.4133, -0.01974, 0.08746, 0.06027, 1.932, 0.01125, -0.2616, 0.01684, 0.3674, -0.8033, 0.0374, -0.1724, -1.426, 0.6368, -0.01424, 0.04741, -0.1653, -0.4078, 0.0644},
+    {-0.1988, -0.6131, 1.043, -0.5207, 0.3777, 0.8765, 0.514, 0.1298, 0.1233, 0.2835, 0.01433, 0.2548, -0.4411, -0.6781, -0.6487, 0.4339, -0.1574, -0.2387, 0.9188, -0.7549, -0.05801, 0.3062, 1.272, -0.1599, -0.1448, -1.136, -0.3578, 0.7248}};
+static const float PFB1[NPH] = {-0.9756, -0.141, 1.648, -0.7655, 0.7908, -1.06, -0.08297, -0.288, -0.3978, -0.3513, 0.3656, -0.1078, -0.2635, -0.5152, 0.3182, -0.09144};
+static const float PFW2[NPH] = {-0.8679, 0.7463, -1.778, -0.6686, -0.7298, -0.8781, 1.216, -0.9298, 1.097, 1.28, 0.8879, 0.01905, -1.261, 1.473, -1.191, -1.177};
+static inline float prefNet(const float *f) {
+    float s = 0;
+    for (int j = 0; j < NPH; j++) {
+        float h = PFB1[j];
+        for (int k = 0; k < NPF; k++) h += PFW1[j][k] * f[k];
+        if (h > 0) s += PFW2[j] * h;
+    }
+    return s;
+}
+/*PREFNET_END*/
 // Returns the chosen direction per snake in out[] (all snakes, opponents included).
 static void search(const State &root, double budgetMs, int8_t *out, const int8_t *played = nullptr) {
     auto t0 = chrono::steady_clock::now();
@@ -1331,8 +1432,11 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
             if (!root.s[i].alive) continue;
             int rm = rawMask(root, i), cnt = __builtin_popcount(rm);
             if (cnt < 2) continue;
-            float L[4], mean = 0;
-            movePrefs(root, i, rm, L);
+            float L[4] = {0, 0, 0, 0}, mean = 0;
+            if (PRIOR_NET != 0) {
+                for (int d = 0; d < 4; d++)
+                    if (rm >> d & 1) { float f[NPF]; moveFeatures(root, i, d, f); L[d] = prefNet(f); }
+            } else movePrefs(root, i, rm, L);
             for (int d = 0; d < 4; d++)
                 if (rm >> d & 1) mean += L[d];
             mean /= cnt;

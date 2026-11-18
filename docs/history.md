@@ -18,7 +18,8 @@ maps, both seats). Self-play overstates arena gains.
 | v1.6 | plain trees again (shared states were level over 1,600 real-time games and in the arena); net n3a trained on 120k games played by the v1.4b logic (generation 3; held-out accuracy 85.9%) | vs v1.5, real time, four batches of 50: +28, +78, −21, −92 (**0 ± 43**). Submitted at the user's wish | **33.11**: half a point under v1.4b / v1.5, replaced | 3 |
 | v1.7 | v1.5's source with plain trees and the net n2a again (the net that scored 33.6–33.7); root safety and survival checks in the source, off | | replaced by v1.8 during its run (30.4 at 15% was the last reading) | |
 | v1.8 | **room of each snake** (cells its head reaches in 4 moves, a cost under 8: `EV_SPACE` 1) and **standing on another snake counts as support** when a snake's reach is read (`SNK_SUP`); packed without comment lines | real time vs the same build without them: room +70, +35, −56; support +14, +56, −24, +85 (+33 ± 31); both +45; the packed file vs v1.7 +21 (50 games). Submitted at the user's wish | **33.06**; against the top two the wall hits did not fall (0.45 a game, theirs 0.03); sZoom +0 −13 =3, _H3R0_ +3 −11 =1 | **3** |
-| v1.9 | **tempo credit** (`EV_TEMPO` 0.1): a snake's own credit is charged the mean table distance to its nearest apple over the line, so getting there sooner counts. The switch that moved the agreement with _H3R0_'s moves most (+1.4 points) | Kaggle, real time, vs v1.8: +16, −2 (+7 ± 22) | running | |
+| v1.9 | **tempo credit** (`EV_TEMPO` 0.1): a snake's own credit is charged the mean table distance to its nearest apple over the line, so getting there sooner counts. The switch that moved the agreement with _H3R0_'s moves most (+1.4 points) | Kaggle, real time, vs v1.8: +16, −2 (+7 ± 22) | **33.75**: the best so far | **3** |
+| v1.10 | **root prior** (`PRIOR_W` 0.05, `movePrefs`): every snake's root, ours and theirs, gets a bias toward the kind of move the top players choose (sixteen facts about a move, weights fitted on 30,000 of their decisions), fading with the visits | agreement with _H3R0_'s moves 61.9% → 63.9%; real-time self-play −17, +42 | running | |
 
 ## Measurements
 
@@ -135,6 +136,17 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Fitted set against the v1.9 settings, real-time self-play | 200 | **−24, −49** |
 | Tempo 0.1 with net weight 1.2, Kaggle real time, vs v1.8 | 800 | −36, −4 |
 | Head threat (`EV_HEAD`): cost or bonus for a head within 2 cells of an enemy head, with and without regard to the lengths, on the fitted set | 7 runs | −0.4 to −0.9 points of agreement, both signs |
+| The fitted set (value scale 15, net weight 1.0, eat-sooner 0.35) in ordinary play, Kaggle real time; and **against _H3R0_'s live bot**, paired replays against v1.9 | 800; 32 pairs | **−72, −106**; margin −2.2 ± 1.6. Rejected by both |
+| Value scale 15 alone; with net weight 1.5; scale 12 + net 1.5 + eat-sooner 0.35; net weight 1.5 alone (Kaggle, real time) | 400 each | −37; −54; −30; +13 |
+| Second fitting round from the fitted point, 20 weights on a finer grid | — | nothing kept: the weights are at their optimum for this measure |
+| Search-structure switches on agreement (first-visit ordering, merged states, value-to-go) | — | −0.5 to −1.0 |
+| **What a move is like when they pick it** (`tools/prefs.py`: softmax over the legal moves of a decision, linear in sixteen facts). Weight for _H3R0_ / sZoom / us: into a cell with no apple in reach −1.10 / −1.20 / **+0.21**; regains reach +0.94 / +0.76 / +0.20; second apple far behind the first −0.55 / −0.71 / −0.15; per cell further from the nearest apple −0.38 / −0.53 / −0.24; enemy head next to the target **+0.01** / −0.53 / **−0.86**; straight on +0.44 / +0.53 / +0.20; target rests on a snake +0.67 / +1.29 / +0.61 | 14k–17k decisions each | the linear model picks sZoom's move 67.5% of the time, our search 61.7% |
+| Those preferences as leaf terms: dead-zone cost (`EV_DEAD`) 0.5 / 1.5 / 3; cluster term (`EV_D2`); weight of a snake's own lost parts in its credit (`OWN_LOSS`) 0.5 / 0 / 1.5 | — | agreement +0.3 / −1.4 / −1.6; −0.5 to −1.5; −0.3 / −0.6 / −0.3 |
+| The preferences as a prior at the root: as virtual visits (100 per move; 5; 2); as a bias that fades with the visits (`PRIOR_W` 0.02 / 0.05 / 0.2) | — | agreement −0.5 to −1.6; +0.6; +0.7; **+0.7 / +1.8 / +2.1** |
+| Root prior 0.05 / 0.15 against the v1.9 settings, real-time self-play | 200 / 100 | −17, +42; +10 |
+| The static part of the preferences inside the whole tree (`PRIOR_T` 0.06) | 200 | agreement +0.4; self-play +38, −17 |
+| **Preference net** (28 facts of a move → 16 → score, `moveFeatures` / `prefNet`, 480 weights): held-out decisions of _H3R0_; of sZoom; both | 8.9k / 9.8k / 18.7k | 63.7%; 72.9%; **68.6%** (our search without a prior 61.2%) |
+| The net as the root prior, weight 0.03 / 0.06 / 0.12 / 0.25: agreement with _H3R0_; weight 0.06 against the linear prior in real-time self-play | — ; 200 | 65.0% / 66.0% / **66.3%** / 66.1% (no prior 61.9%, linear 63.9%); +17, +35 |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -490,6 +502,22 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   agreement falls with the distance to the apple and with the turn. The tempo credit is
   the term that answers it; in self-play it had been worth nothing, which is why it was
   off.
+
+- **Fitting all the weights to their moves was a mistake the gates caught.** The set that
+  agrees most with _H3R0_ lost 90 Elo in self-play and lost to v1.9 against his own bot.
+  Agreement is a microscope for one idea at a time (the tempo credit it found is the best
+  arena score so far); as a quantity to maximise it leads away from strength.
+- **How the top two choose, in numbers.** They do not step onto cells from which their
+  snake can reach no apple (we are indifferent), they go where a second apple is close
+  behind the first, they keep going straight, and _H3R0_ does not avoid a cell because one
+  of our heads is next to it while we avoid his: a head-on costs both a part, but our
+  per-snake credit charges the snake for its own.
+- **A preference about a move belongs at the root, not at the leaves.** The same facts as
+  leaf terms changed nothing or cost agreement; as a bias on the root moves they add two
+  points with the linear model and four with a small net. Virtual visits are the wrong
+  way to give a prior (they take the exploration away: −0.8 with no prior at all); a bias
+  inside the selection formula that fades with the visits is the right one.
+- sZoom is far more predictable than _H3R0_ (73% against 64% for the same net).
 
 ## Arena notes
 

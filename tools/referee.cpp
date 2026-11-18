@@ -778,30 +778,15 @@ static int traceGame(const char *path, int dumpTurn = -1) {
                 if (!S.s[i].alive || __builtin_popcount(rawMask(S, i)) < 2) continue;    // only real choices
                 int side = i >= n / 2;
                 agN[side]++, agA[side] += out[i] == mv[i];
-                if (getenv("SB_MDUMP")) {             // one line per legal move of the decision: features, and whether it was played
-                    int l, r;
-                    reachIdx(S, i, l, r);
-                    auto near = [&](int c, int skip) { int b = 255, b2 = 255; for (int a = 0; a < nApple0; a++) if (S.occ[appleCell[a]] == APPLE) { int v = GDROW(l, 0, c)[a]; if (v < b) b2 = b, b = v; else if (v < b2) b2 = v; } return skip ? b2 : b; };
-                    int hd = S.s[i].head(), rm = rawMask(S, i), d0 = near(hd, 0), e0 = 99;
-                    for (int j = 0; j < n; j++)
-                        if (S.s[j].alive && OWNER[j] != OWNER[i]) e0 = min(e0, abs(cx(S.s[j].head()) - cx(hd)) + abs(cy(S.s[j].head()) - cy(hd)));
+                if (getenv("SB_MDUMP")) {             // one line per legal move of the decision: played, our pick, then moveFeatures
+                    int rm = rawMask(S, i);
                     for (int d = 0; d < 4; d++) {
                         if (!(rm >> d & 1)) continue;
-                        int c = hd + DELTA[d], d1 = near(c, 0), d2 = near(c, 1), freeN = 0, enemyAdj = 0, e1 = 99, mateAdj = 0;
-                        for (int q = 0; q < 4; q++) {
-                            int t2 = c + DELTA[q];
-                            if (t2 != hd && S.occ[t2] < WALL) freeN++;
-                        }
-                        for (int j = 0; j < n; j++) {
-                            if (!S.s[j].alive || j == i) continue;
-                            int dj = abs(cx(S.s[j].head()) - cx(c)) + abs(cy(S.s[j].head()) - cy(c));
-                            if (OWNER[j] != OWNER[i]) { e1 = min(e1, dj); enemyAdj += dj == 1; }
-                            else mateAdj += dj == 1;
-                        }
-                        uint8_t above = S.occ[c - STRIDE], below = S.occ[c + STRIDE];
-                        printf("M %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d %d\n", side, S.turn, S.s[i].len, d == mv[i], d == out[i], d,
-                               d0, d1, d2, S.occ[c] == APPLE, freeN, enemyAdj, mateAdj, e0, e1,
-                               above >= SNAKE && OWNER[above - SNAKE] != OWNER[i], below == WALL || below == APPLE ? 1 : below >= SNAKE ? 2 : 0, d == S.s[i].facing());
+                        float f[NPF];
+                        moveFeatures(S, i, d, f);
+                        printf("M %d %d %d %d %d %d", side, S.turn, i, d == mv[i], d == out[i], d);
+                        for (int q = 0; q < NPF; q++) printf(" %.4g", f[q]);
+                        printf("\n");
                     }
                 }
                 if (getenv("SB_AGDUMP")) {            // one line per decision: what each move does to the distance to the nearest apple
