@@ -30,7 +30,8 @@ maps, both seats). Self-play overstates arena gains.
 | v1.11, fourth run | resubmitted after v1.15 | | **34.23**. Four runs of one file: 36.04, 35.54, 35.23, 34.23 (mean 35.3, spread 0.8): v1.12–v1.14 at 34.5–35.0 cannot be told from v1.11 by one run each | 3 |
 | v1.16 | v1.11 + **endgame weights for the root prior** (`PRIOR_PH` 1): with 6 apples or fewer left the move score is a fit of 23 facts on the top two's endgame moves only | agreement with _H3R0_ 63.45 → 63.97, sZoom 64.85 → 65.73; Kaggle real time −1, −10, +6 (level) | 34.95 at 92% (replaced by v1.17 before the end) | 3 |
 | v1.17 | v1.16 + the **endgame weights in the in-tree prior** (`PRIOR_TL` 1) | agreement with _H3R0_ 64.27, sZoom 66.15 (v1.11: 63.45, 64.85) | **35.39** (+104 −40 =15, **70.1%**, the best win rate of any run; against the top two +12 −17 =2, where v1.11's four runs had 20–38%). The new base | 3 |
-| v1.18 | v1.17 + root prior weight 0.05 → 0.08 | agreement _H3R0_ 64.27 → 64.55, sZoom 66.15 → 66.99; phase switch at 10 / 14 apples in place of 6: 64.40, 66.33 / 64.48, 66.15 (no difference) | running | |
+| v1.18 | v1.17 + root prior weight 0.05 → 0.08 | agreement _H3R0_ 64.27 → 64.55, sZoom 66.15 → 66.99; phase switch at 10 / 14 apples in place of 6: 64.40, 66.33 / 64.48, 66.15 (no difference) | **34.09** (+91 −53 =15, 61.9%; top two +5 −29). The second low run of weight 0.08 after v1.14: dropped | 3 |
+| v1.17, second run | resubmitted after v1.18 | | running | |
 
 ## Measurements
 
