@@ -341,6 +341,8 @@ PARAM(THREAT, 0);        // root: 1 = my snakes do not enter a cell an enemy hea
 PARAM(TOGO, 0);           // 1: a node is backed up with what happened from it on (the gains made before it are taken out); for merged nodes, whose visits have different pasts
 PARAM(MERGE, 0);          // state merging: a snake's node is (depth mod MERGE, head cell, facing) whatever path led there; 0 = plain trees. 2 = by parity, 16 = by depth
 PARAM(PRIOR_W, 0.05);        // root prior: value per unit of the move-preference score fitted on the top players' moves (0 = off)
+PARAM(PRIOR_TA, 0);       // in-tree prior: weight of "the target cell is an apple" (1.25 in the fitted preferences)
+PARAM(PRIOR_TN, 0);       // in-tree prior: its own fading constant (0 = PRIOR_N)
 PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
 PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
 PARAM(PRIOR_NET, 0);      // 1: the root prior comes from the preference net (prefNet) instead of the sixteen linear weights
@@ -1435,6 +1437,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
     const bool tempo = EV_TEMPO != 0, passOn = EV_PASS != 0, togo = TOGO != 0, priorT = PRIOR_T != 0;
     const float pT = (float)PRIOR_T;
     const bool sh = PRIOR_SH != 0;
+    const float pTA = (float)PRIOR_TA, pTN = (float)(PRIOR_TN != 0 ? PRIOR_TN : PRIOR_N);
     static float rootBias[MAXS][4];                          // what the top players prefer in a move, as a fading bias at every root
     const bool prior = PRIOR_W != 0;
     if (prior)
@@ -1526,11 +1529,11 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     const int hd = S.s[i].head(), f = S.s[i].facing(), t0 = T[hd];
                     for (int q = 0; q < 4; q++) {
                         int c = hd + DELTA[q], dd = T[c] - t0;
-                        tb[q] = pT * (-0.46f * (dd < -3 ? -3 : dd > 3 ? 3 : dd) + 1.2f * supc[c] + (q == f && (!sh || (q & 1)) ? 0.49f : 0) + (q == 0 ? -0.39f : q == 2 ? -0.68f : 0));
+                        tb[q] = pT * (-0.46f * (dd < -3 ? -3 : dd > 3 ? 3 : dd) + 1.2f * supc[c] + (q == f && (!sh || (q & 1)) ? 0.49f : 0) + (q == 0 ? -0.39f : q == 2 ? -0.68f : 0) + (S.occ[c] == APPLE ? pTA : 0));
                     }
                     bias = tb;
                 }
-                m = selectMove(pool[nd], mask, OWNER[i] == 0 ? 1.f : -1.f, nearF[i], S.s[i].head(), bias, (float)PRIOR_N);
+                m = selectMove(pool[nd], mask, OWNER[i] == 0 ? 1.f : -1.f, nearF[i], S.s[i].head(), bias, d == 0 ? (float)PRIOR_N : pTN);
                 mv[i] = m;
                 pathNode[d][i] = nd;
                 pathMove[d][i] = m;
