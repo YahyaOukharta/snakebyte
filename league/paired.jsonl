@@ -35,3 +35,5 @@
 {"game": 923641790, "opp": "sZoom", "a": "safe.cpp", "b": "v17.cpp", "A": {"margin": -2, "win": false, "timeout": false, "log": "test-923759123.log"}, "B": {"margin": -3, "win": false, "timeout": false, "log": "test-923759625.log"}}
 {"game": 923645921, "opp": "_H3R0_", "a": "safe.cpp", "b": "v17.cpp", "A": {"margin": -1, "win": false, "timeout": false, "log": "test-923760453.log"}, "B": {"margin": -1, "win": false, "timeout": false, "log": "test-923760045.log"}}
 {"game": 923648563, "opp": "sZoom", "a": "safe.cpp", "b": "v17.cpp", "A": {"margin": 3, "win": true, "timeout": false, "log": "test-923760843.log"}, "B": {"margin": -8, "win": false, "timeout": false, "log": "test-923761254.log"}}
+{"game": 923636830, "opp": "_H3R0_", "a": "fitted.cpp", "b": "v1.9.cpp", "A": {"margin": 0, "win": false, "timeout": false, "log": "test-923880431.log"}, "B": {"margin": 4, "win": true, "timeout": false, "log": "test-923880601.log"}}
+{"game": 923645921, "opp": "_H3R0_", "a": "fitted.cpp", "b": "v1.9.cpp", "A": {"margin": -2, "win": false, "timeout": false, "log": "test-923880984.log"}, "B": {"margin": -2, "win": false, "timeout": false, "log": "test-923880761.log"}}

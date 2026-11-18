@@ -18,6 +18,7 @@ maps, both seats). Self-play overstates arena gains.
 | v1.6 | plain trees again (shared states were level over 1,600 real-time games and in the arena); net n3a trained on 120k games played by the v1.4b logic (generation 3; held-out accuracy 85.9%) | vs v1.5, real time, four batches of 50: +28, +78, −21, −92 (**0 ± 43**). Submitted at the user's wish | **33.11**: half a point under v1.4b / v1.5, replaced | 3 |
 | v1.7 | v1.5's source with plain trees and the net n2a again (the net that scored 33.6–33.7); root safety and survival checks in the source, off | | replaced by v1.8 during its run (30.4 at 15% was the last reading) | |
 | v1.8 | **room of each snake** (cells its head reaches in 4 moves, a cost under 8: `EV_SPACE` 1) and **standing on another snake counts as support** when a snake's reach is read (`SNK_SUP`); packed without comment lines | real time vs the same build without them: room +70, +35, −56; support +14, +56, −24, +85 (+33 ± 31); both +45; the packed file vs v1.7 +21 (50 games). Submitted at the user's wish | **33.06**; against the top two the wall hits did not fall (0.45 a game, theirs 0.03); sZoom +0 −13 =3, _H3R0_ +3 −11 =1 | **3** |
+| v1.9 | **tempo credit** (`EV_TEMPO` 0.1): a snake's own credit is charged the mean table distance to its nearest apple over the line, so getting there sooner counts. The switch that moved the agreement with _H3R0_'s moves most (+1.4 points) | Kaggle, real time, vs v1.8: +16, −2 (+7 ± 22) | running | |
 
 ## Measurements
 
@@ -127,6 +128,13 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
 | Kaggle, real time: `SNK_SUP` alone; `EV_SPACE` alone | 400 each | +13 ± 31; +21 ± 32 |
 | **Opponent on rails as a strength test** (`tools/railset.py`): 702 stretches of 15 turns from the games against _H3R0_, margin gained per stretch. v1.4b; v1.2; v1.3; v1.6; v1.8 | 702 | +0.04; **+0.74**; +0.29; +0.34; +0.37 (± 0.12): the weakest version scores best. Not a strength test |
 | **Agreement with the top players' moves** (`tools/agree.py`): share of their real decisions (a snake with at least two legal moves) for which our search at 2000 iterations picks the move they played. _H3R0_ (14,220 decisions); sZoom (16,578) | — | 60.6%; 59.1% |
+| **Every evaluation switch scored on agreement with _H3R0_'s moves** (baseline 60.59%, 17 s a run). Gains: tempo credit 0.1 **+1.36** (0.05 +1.04, 0.2 +0.30, 0.35 −0.41); value scale 12 +0.32; net weight 1.2 +0.29; ownership 0 +0.23. Losses: territory cells 0.01 / 0.03 −2.0 / −5.6; pass cost −1.9; value scale 6 −1.45; room cost 3 −1.04; soft ownership −1.04; net weight 3.2 −0.91; the rest within ±0.9 | 14,220 decisions | the settings already in use are near the top of almost every sweep |
+| Where the disagreements are: by turn (under 15 / 15–40 / over 40); by distance to his nearest apple (≤ 3 / 4–10 / 11+ / none in reach). Kind of disagreement: his move goes closer and ours further; both closer; his further and ours closer | 14,220 | agreement 71% / 66% / 57%; 68% / 60% / 55% / 55%. 25% / 19% / 18% of the disagreements |
+| **Fit** (`tools/fit.py`, coordinate ascent on 70% of his games): tempo 0.1, value scale 15, net weight 1.0, eat-sooner share 0.35. Agreement on his held-out games: defaults / tempo only / fitted; on sZoom's games | 4,300 / 16,578 decisions | 58.7% / 59.6% / **61.6%**; 59.1% / 61.3% / **61.8%** |
+| The same at 7000 iterations (last 40 games against him): without tempo / v1.9 / fitted | 5,600 | 58.0% / 58.6% / 61.5% |
+| Fitted set against the v1.9 settings, real-time self-play | 200 | **−24, −49** |
+| Tempo 0.1 with net weight 1.2, Kaggle real time, vs v1.8 | 800 | −36, −4 |
+| Head threat (`EV_HEAD`): cost or bonus for a head within 2 cells of an enemy head, with and without regard to the lengths, on the fitted set | 7 runs | −0.4 to −0.9 points of agreement, both signs |
 | Reach tables where a snake that steps off at full stretch falls until its head is on a supported cell (`TBL_DROP`) instead of dropping one row | 100, 3000 it | −38 ± 61 |
 | Win bonus given smoothly before the end (`WIN_SMOOTH` 1 / 0.5 / scale 4) | 100 each, 3000 it | −56 / −60 / −56: a large shared term that swings with the lead drowns each snake's own signal |
 | **Decided games** (`DECIDED`): a lead larger than the apples left gets the win bonus at once | 200, 3000 it | +17, −21: no change in results, and the bot no longer stalls (below) |
@@ -468,6 +476,20 @@ All at fixed iterations per move against the stated baseline. ± is the 95% inte
   for his snakes in his positions, picks the move he played. It needs no match, runs in
   under a minute on 14,000 decisions, and every switch of the evaluation can be scored on
   it. The assumption is that the first of the arena chooses better than we do.
+
+- **Agreement with the first of the arena is a usable measure, with a limit.** It prefers
+  on its own the settings that matches had already picked, it holds on games it was not
+  fitted on and on the other top player, and it holds at the real search budget. But the
+  set that agrees most (flatter values, half the net weight) loses about 35 Elo to the
+  v1.9 settings in self-play. The net was trained on our own games and helps most against
+  ourselves; whether trusting it less pays against the players who beat us is for the
+  arena to say. Resolution: about ±0.4 points; the head-threat term, either sign, sits
+  inside that.
+- **He is more direct than we are.** A quarter of the disagreements are his snake going
+  toward its nearest apple where our search picks a move that goes away from it, and the
+  agreement falls with the distance to the apple and with the turn. The tempo credit is
+  the term that answers it; in self-play it had been worth nothing, which is why it was
+  off.
 
 ## Arena notes
 
