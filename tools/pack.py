@@ -5,16 +5,19 @@
 The net (raw float32: W1 b1 W2 b2 W3 b3) is quantised to 16 bits per weight with one scale
 per array and written as text, three characters per weight. If the result would pass 96,000
 characters, the comments at the end of code lines are removed, then the comment lines
-(CodinGame's limit is 100,000). The commented source is bot.cpp in the repository. The output also compiles with
+(CodinGame's limit is 100,000); before that, or always with --release, the blocks of the local
+tools (#ifdef LOCAL, DUMP, PROF, SLOWFALL) are dropped, so such a file takes no SB_ parameters.
+The commented source is bot.cpp in the repository. The output also compiles with
 -DLOCAL, so the embedded net can be gated on the local referee.
 """
-import argparse, numpy as np, os, re
+import argparse, numpy as np, os, re, sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ap = argparse.ArgumentParser()
 ap.add_argument("-n", "--net", required=True)
 ap.add_argument("-o", "--out", required=True)
 ap.add_argument("-D", action="append", default=[], help="NAME=VALUE: replace the default of a PARAM")
 ap.add_argument("src", nargs="?", default=os.path.join(ROOT, "bot.cpp"))
+ap.add_argument("--release", action="store_true", help="drop the blocks of the local tools (LOCAL, DUMP, PROF, SLOWFALL)")
 a = ap.parse_args()
 src = open(a.src).read()
 m = re.search(r"enum \{ NF_G = (\d+), NF_S = (\d+), NF = NF_G \+ 8 \* NF_S, NH1 = (\d+), NH2 = (\d+) \}", src)
@@ -37,6 +40,22 @@ for d in a.D:
     src, k = re.subn(r"PARAM\(%s, [^)]*\)" % name, f"PARAM({name}, {val})", src)
     assert k == 1, name
 head = f'#define NETW_DATA "{data}"\n#define NETW_SCALES {", ".join("%.9gf" % s for s in scales)}\n'
+if "--release" in sys.argv or len(head) + len(src) > 96000:     # the code of the local tools is not needed on CodinGame
+    keep, stack = [], []
+    for l in src.split("\n"):
+        t = l.strip()
+        m = re.match(r"#\s*ifdef\s+(\w+)", t)
+        if t.startswith("#if"):
+            stack.append("off" if m and m.group(1) in ("LOCAL", "DUMP", "DUMPQ", "PROF", "SLOWFALL", "GDCHECK") else "plain")
+            if stack[-1] == "off": continue
+        elif t.startswith("#else") and stack and stack[-1] in ("off", "on"):
+            stack[-1] = "on" if stack[-1] == "off" else "off"
+            continue
+        elif t.startswith("#endif") and stack:
+            if stack.pop() in ("off", "on"): continue
+        if "off" in stack: continue
+        keep.append(l)
+    src = "\n".join(keep)
 if len(head) + len(src) > 96000:                              # CodinGame takes 100,000 characters: drop the comments at
     lines = []                                                # the end of code lines, keep the ones on their own lines
     for l in src.split("\n"):

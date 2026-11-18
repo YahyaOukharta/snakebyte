@@ -1048,6 +1048,7 @@ static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t
 #endif
 }
 
+#ifdef LOCAL
 // Copies the subtree at old node o (in pool2) into pool, scaling its statistics by f.
 static int copyTree(int o, float f) {
     int x = newNode();
@@ -1068,10 +1069,12 @@ static int copyTree(int o, float f) {
     return x;
 }
 
+#endif
 static int lastIters, lastDepth, lastSims;
 static double lastScore;         // mean shared value of the last search, player 0's view, in (-1, 1)
 static long fixedIters = 0;      // LOCAL: iterations per move instead of time
 
+#ifdef LOCAL   // experiments that are off in the submitted bot are compiled for the local tools only
 // ───────────────────────────── root safety ─────────────────────────────
 // The trees model an enemy snake as one that plays for apples like ours. The strongest
 // players also play to shut a snake in: they park on the only way out of a pocket and
@@ -1200,6 +1203,8 @@ static int surviveMask(const State &root, int i, int mask) {
     }
     return ok ? ok : mask;
 }
+
+#endif
 
 // ───────────────────────────── move preferences ─────────────────────────────
 // A linear score of a move from sixteen facts about it, fitted on the decisions sZoom and
@@ -1366,6 +1371,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
     for (int a = 0; a < nApple0; a++)
         if (root.occ[appleCell[a]] == APPLE) scanList[scanN++] = a;
     int roots[MAXS];
+#ifdef LOCAL
     if (REUSE > 0 && played && haveTrees) {                  // keep what was searched under the moves played
         swap(pool, pool2);
         poolN = 1;
@@ -1376,7 +1382,9 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
             roots[i] = o ? copyTree(o, (float)REUSE) : 0;
             if (!roots[i]) roots[i] = newNode();
         }
-    } else {
+    } else
+#endif
+    {
         poolN = 1;
         mstamp++;
         for (int i = 0; i < NS; i++)
@@ -1458,8 +1466,10 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     if ((e == 1 || e == -1 || e == STRIDE || e == -STRIDE) && c != root.s[j].part(1)) safe &= ~(1 << d);
                 }
             }
+#ifdef LOCAL
         if (SAFE != 0) safe = safeMask(root, i, safe ? safe : valid);
         if (SAFE_D != 0) safe = surviveMask(root, i, safe ? safe : valid);
+#endif
         rootMask[i] = safe ? safe : valid;
     }
     for (;;) {
@@ -1578,7 +1588,9 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
 static void initSearch() {
     pool = (Node *)aligned_alloc(64, sizeof(Node) * POOL);
     mref = (MRef *)calloc((size_t)MAXS * 16 * CELLS * 4, sizeof(MRef));
+#ifdef LOCAL
     pool2 = (Node *)aligned_alloc(64, sizeof(Node) * POOL);
+#endif
     for (int i = 1; i < 65536; i++) sqrtLog[i] = sqrtf(logf((float)i));
 #if defined(__x86_64__)
     for (int m = 0; m < 16; m++)
