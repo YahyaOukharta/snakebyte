@@ -356,6 +356,8 @@ PARAM(LAST_AP, 0);        // root: my snakes do not eat the last apple when the 
 PARAM(OPP_POL, 0);        // share of the enemy snakes' moves in the tree drawn from the fitted preferences in place of their own UCB choice
 PARAM(FPU_ON, 0);         // first-play urgency: an untried move starts at the node's mean value + FPU instead of being tried at once
 PARAM(FPU, 0);
+PARAM(PUCT, 0);           // > 0: the prior enters as PUCT x bias x sqrt(N) / (1 + n) instead of fading with bn / (bn + n)
+PARAM(FINAL_R, 0);        // > 0: the move played is the best mean among the moves with at least FINAL_R x the visits of the most visited
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
 PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
 PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
@@ -1046,7 +1048,8 @@ static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t
     __m128 q = _mm_add_ps(_mm_mul_ps(_mm_mul_ps(_mm_loadu_ps(nd.w), _mm_set1_ps(sign)), _mm_rcp_ps(n)),
                           _mm_mul_ps(_mm_set1_ps(e), _mm_rsqrt_ps(n)));
     if (bias)                                                // a prior on the moves that fades as they are visited: bias x bn / (bn + n)
-        q = _mm_add_ps(q, _mm_div_ps(_mm_mul_ps(_mm_loadu_ps(bias), _mm_set1_ps(bn)), _mm_add_ps(_mm_set1_ps(bn), n)));
+        q = PUCT > 0 ? _mm_add_ps(q, _mm_div_ps(_mm_mul_ps(_mm_loadu_ps(bias), _mm_set1_ps((float)PUCT * sqrtf((float)nd.N))), _mm_add_ps(_mm_set1_ps(1), n)))
+                     : _mm_add_ps(q, _mm_div_ps(_mm_mul_ps(_mm_loadu_ps(bias), _mm_set1_ps(bn)), _mm_add_ps(_mm_set1_ps(bn), n)));
     __m128 jit = _mm_add_ps(_mm_set1_ps(1e6f), _mm_cvtepi32_ps(_mm_set_epi32(p3, p2, p1, p0)));
     if (FPU_ON && nd.N > 0) {                                // first-play urgency: an untried move is worth the node's mean so far plus FPU, not infinity
         float sw = nd.w[0] + nd.w[1] + nd.w[2] + nd.w[3];
@@ -1068,7 +1071,7 @@ static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t
     for (int d = 0; d < 4; d++) {
         float q = !(mask >> d & 1) ? -1e9f
                   : nd.n[d] == 0 ? (fpu ? fp0 + (float)pr[d] * 1e-7f + (bias ? bias[d] : 0) : 1e6f + (float)pr[d])
-                  : sign * nd.w[d] / nd.n[d] + e / sqrtf(nd.n[d]) + (bias ? bias[d] * bn / (bn + nd.n[d]) : 0);
+                  : sign * nd.w[d] / nd.n[d] + e / sqrtf(nd.n[d]) + (bias ? (PUCT > 0 ? bias[d] * (float)PUCT * sqrtf((float)nd.N) / (1 + nd.n[d]) : bias[d] * bn / (bn + nd.n[d])) : 0);
         if (q > bestV) bestV = q, best = d;
     }
     return best;
@@ -1679,6 +1682,11 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         float bn = -1;
         for (int d = 0; d < 4; d++)
             if (x.n[d] > bn) bn = x.n[d], best = d;
+        if (FINAL_R > 0) {
+            float bq = -1e9f, sg = OWNER[i] == 0 ? 1.f : -1.f;
+            for (int d = 0; d < 4; d++)
+                if (x.n[d] > 0 && x.n[d] >= (float)FINAL_R * bn && sg * x.w[d] / x.n[d] > bq) bq = sg * x.w[d] / x.n[d], best = d;
+        }
         out[i] = best;
     }
     lastIters = iters, lastDepth = depth, lastSims = sims;
