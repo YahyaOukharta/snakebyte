@@ -364,6 +364,7 @@ PARAM(K_SN, 1);
 PARAM(K_ST, 1);
 PARAM(HO_P, 0);           // head-on at the root: share of the simulations in which an enemy head next to the cell my snake enters steps into it too
 PARAM(HO_L, 0);           // ... only for my snakes of at most this length against a longer enemy (0 = every pair)
+PARAM(TRAP_FF, 0);        // root: a move into a region with fewer free cells than TRAP_FF x the snake's length is not played while another move has room (0 = off)
 PARAM(PUCT, 0);           // > 0: the prior enters as PUCT x bias x sqrt(N) / (1 + n) instead of fading with bn / (bn + n)
 PARAM(FINAL_R, 0);        // > 0: the move played is the best mean among the moves with at least FINAL_R x the visits of the most visited
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
@@ -1417,6 +1418,33 @@ static inline float prefNet(const float *f) {
 }
 /*PREFNET_END*/
 // Returns the chosen direction per snake in out[] (all snakes, opponents included).
+// Cells my snake can still reach after stepping to c, counted up to `need`: a flood over free
+// cells, where a cell under a snake counts once that part of the body has moved on (vac = moves
+// until it is free). Gravity is ignored, so the count is an upper bound.
+static int roomAfter(const State &S, int c, int need) {
+    static uint16_t seen[CELLS], stamp = 0;
+    static uint8_t vac[CELLS];
+    static int q[CELLS], qd[CELLS];
+    if (++stamp == 0) memset(seen, 0, sizeof seen), stamp = 1;
+    for (int j = 0; j < NS; j++)
+        if (S.s[j].alive)
+            for (int k = 0; k < S.s[j].len; k++) vac[S.s[j].part(k)] = (uint8_t)(S.s[j].len - k > 250 ? 250 : S.s[j].len - k);
+    int qh = 0, qt = 0, cnt = 0;
+    q[qt] = c, qd[qt++] = 1, seen[c] = stamp;
+    while (qh < qt && cnt < need) {
+        int x = q[qh], t = qd[qh++];
+        cnt++;
+        for (int d = 0; d < 4; d++) {
+            int y = x + DELTA[d];
+            if (seen[y] == stamp) continue;
+            uint8_t o = S.occ[y];
+            if (o == WALL || o == VOID || (o >= SNAKE && vac[y] > t)) continue;
+            seen[y] = stamp, q[qt] = y, qd[qt++] = t + 1;
+        }
+    }
+    return cnt;
+}
+
 static void search(const State &root, double budgetMs, int8_t *out, const int8_t *played = nullptr) {
     auto t0 = chrono::steady_clock::now();
     const int MD = MERGE > 15 ? 15 : (int)MERGE;
@@ -1573,6 +1601,21 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     if ((m >> d & 1) && root.occ[root.s[i].head() + DELTA[d]] == APPLE) keep &= ~(1 << d);
                 if (keep) safe = keep;
             }
+        }
+        if (TRAP_FF > 0) {                                   // no walking into a pocket smaller than the snake
+            int m = safe ? safe : valid, keep = 0, room[4] = {0, 0, 0, 0}, best = 0;
+            for (int d = 0; d < 4; d++) {
+                if (!(m >> d & 1)) continue;
+                const int c = root.s[i].head() + DELTA[d];
+                const int need = (int)(TRAP_FF * (root.s[i].len + (root.occ[c] == APPLE))) + 1;
+                room[d] = roomAfter(root, c, need);
+                if (room[d] >= need) keep |= 1 << d;
+                if (room[d] > best) best = room[d];
+            }
+            if (!keep)                                       // every move is cramped: the roomiest ones
+                for (int d = 0; d < 4; d++)
+                    if ((m >> d & 1) && room[d] == best) keep |= 1 << d;
+            safe = keep;
         }
 #ifdef LOCAL
         if (SAFE != 0) safe = safeMask(root, i, safe ? safe : valid);
@@ -1919,6 +1962,8 @@ int main() {
             if (!synced) outp += " DS", synced = true;       // marker readable in battle logs
         }
         if (outp.empty()) outp = "WAIT";
+        puts(outp.c_str());                                  // the moves go out before anything is written to stderr
+        fflush(stdout);
         double ms = chrono::duration<double, milli>(chrono::steady_clock::now() - t0).count();
         fprintf(stderr, "t%d it %d d %d sims %d nodes %d %.1fms desync %d L %d/%d score %d-%d apples %d\n", turnNo, lastIters,
                 lastDepth, lastSims, poolN, ms, desyncs, cur.losses[0], cur.losses[1], cur.len[0], cur.len[1], cur.napples);
@@ -1985,8 +2030,6 @@ int main() {
             memset(prof, 0, sizeof prof);
         }
 #endif
-        puts(outp.c_str());
-        fflush(stdout);
         // remember what was sent: a dead or missing snake keeps its facing in the referee
         prevS = cur;
         for (int i = 0; i < NS; i++) myMv[i] = cur.s[i].alive ? (OWNER[i] == 0 ? mv[i] : 0) : 0;
