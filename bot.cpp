@@ -365,6 +365,7 @@ PARAM(K_ST, 1);
 PARAM(HO_P, 0);           // head-on at the root: share of the simulations in which an enemy head next to the cell my snake enters steps into it too
 PARAM(HO_L, 0);           // ... only for my snakes of at most this length against a longer enemy (0 = every pair)
 PARAM(TRAP_FF, 0);        // root: a move into a region with fewer free cells than TRAP_FF x the snake's length is not played while another move has room (0 = off)
+PARAM(TRAP_D, 0);
 PARAM(PUCT, 0);           // > 0: the prior enters as PUCT x bias x sqrt(N) / (1 + n) instead of fading with bn / (bn + n)
 PARAM(FINAL_R, 0);        // > 0: the move played is the best mean among the moves with at least FINAL_R x the visits of the most visited
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
@@ -1418,7 +1419,8 @@ static inline float prefNet(const float *f) {
 }
 /*PREFNET_END*/
 // Returns the chosen direction per snake in out[] (all snakes, opponents included).
-// Cells my snake can still reach after stepping to c, counted up to `need`: a flood over free
+#ifdef LOCAL
+// Cells a snake whose head is on c can still reach, counted up to `need`: a flood over free
 // cells, where a cell under a snake counts once that part of the body has moved on (vac = moves
 // until it is free). Gravity is ignored, so the count is an upper bound.
 static int roomAfter(const State &S, int c, int need) {
@@ -1430,10 +1432,11 @@ static int roomAfter(const State &S, int c, int need) {
         if (S.s[j].alive)
             for (int k = 0; k < S.s[j].len; k++) vac[S.s[j].part(k)] = (uint8_t)(S.s[j].len - k > 250 ? 250 : S.s[j].len - k);
     int qh = 0, qt = 0, cnt = 0;
-    q[qt] = c, qd[qt++] = 1, seen[c] = stamp;
+    q[qt] = c, qd[qt++] = 0, seen[c] = stamp;
+    int cnt0 = -1;                                           // the start cell is not counted
     while (qh < qt && cnt < need) {
         int x = q[qh], t = qd[qh++];
-        cnt++;
+        if (cnt0 < 0) cnt0 = 0; else cnt++;
         for (int d = 0; d < 4; d++) {
             int y = x + DELTA[d];
             if (seen[y] == stamp) continue;
@@ -1444,6 +1447,7 @@ static int roomAfter(const State &S, int c, int need) {
     }
     return cnt;
 }
+#endif
 
 static void search(const State &root, double budgetMs, int8_t *out, const int8_t *played = nullptr) {
     auto t0 = chrono::steady_clock::now();
@@ -1602,13 +1606,19 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                 if (keep) safe = keep;
             }
         }
+#ifdef LOCAL
         if (TRAP_FF > 0) {                                   // no walking into a pocket smaller than the snake
             int m = safe ? safe : valid, keep = 0, room[4] = {0, 0, 0, 0}, best = 0;
             for (int d = 0; d < 4; d++) {
                 if (!(m >> d & 1)) continue;
-                const int c = root.s[i].head() + DELTA[d];
-                const int need = (int)(TRAP_FF * (root.s[i].len + (root.occ[c] == APPLE))) + 1;
-                room[d] = roomAfter(root, c, need);
+                State T = root;                              // where the snake is after the move and its fall, the others going straight on
+                int8_t mm[MAXS];
+                for (int j = 0; j < NS; j++) mm[j] = T.s[j].alive ? T.s[j].facing() : 0;
+                mm[i] = d;
+                T.step(mm);
+                if (!T.s[i].alive) continue;
+                const int need = (int)(TRAP_FF * T.s[i].len) + 1 - (int)TRAP_D;   // TRAP_D: how many cells short the region may be
+                room[d] = roomAfter(T, T.s[i].head(), need) + 1;   // + 1: the cell it stands on
                 if (room[d] >= need) keep |= 1 << d;
                 if (room[d] > best) best = room[d];
             }
@@ -1617,6 +1627,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     if ((m >> d & 1) && room[d] == best) keep |= 1 << d;
             safe = keep;
         }
+#endif
 #ifdef LOCAL
         if (SAFE != 0) safe = safeMask(root, i, safe ? safe : valid);
         if (SAFE_D != 0 && (SAFE_A == 0 || root.napples <= SAFE_A)) safe = surviveMask(root, i, safe ? safe : valid);
@@ -1686,6 +1697,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     __builtin_prefetch(&pool[cur[i]]);       // needed next ply, after the turn is simulated
                 }
             }
+#ifdef LOCAL
             if (d == 0 && hoP > 0)                           // the enemy contests the cell: his head-on is tried whether or not his own tree likes it
                 for (int i = 0; i < NS; i++) {
                     if (!S.s[i].alive || OWNER[i] != 0) continue;
@@ -1704,6 +1716,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                         }
                     }
                 }
+#endif
             PROF_END(P_SELECT);
             int hd0[MAXS], ln0[MAXS];
             if (passOn)
