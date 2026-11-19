@@ -362,6 +362,8 @@ PARAM(K_UP, 1);
 PARAM(K_DN, 1);
 PARAM(K_SN, 1);
 PARAM(K_ST, 1);
+PARAM(HO_P, 0);           // head-on at the root: share of the simulations in which an enemy head next to the cell my snake enters steps into it too
+PARAM(HO_L, 0);           // ... only for my snakes of at most this length against a longer enemy (0 = every pair)
 PARAM(PUCT, 0);           // > 0: the prior enters as PUCT x bias x sqrt(N) / (1 + n) instead of fading with bn / (bn + n)
 PARAM(FINAL_R, 0);        // > 0: the move played is the best mean among the moves with at least FINAL_R x the visits of the most visited
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
@@ -1502,6 +1504,8 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
     }
     kD *= (float)K_D, kSup *= (float)K_SUP, kUp *= (float)K_UP, kDn *= (float)K_DN, kSn *= (float)K_SN;
     const float kSt = 0.49f * (float)K_ST;
+    const float hoP = (float)HO_P;
+    const int hoL = (int)HO_L;
     const bool sh = PRIOR_SH != 0;
     const float pTS = (float)PRIOR_TS;
     const float pTA = (float)PRIOR_TA, pTN = (float)(PRIOR_TN != 0 ? PRIOR_TN : PRIOR_N);
@@ -1639,6 +1643,24 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     __builtin_prefetch(&pool[cur[i]]);       // needed next ply, after the turn is simulated
                 }
             }
+            if (d == 0 && hoP > 0)                           // the enemy contests the cell: his head-on is tried whether or not his own tree likes it
+                for (int i = 0; i < NS; i++) {
+                    if (!S.s[i].alive || OWNER[i] != 0) continue;
+                    const int c = S.s[i].head() + DELTA[mv[i]];
+                    for (int j = 0; j < NS; j++) {
+                        if (!S.s[j].alive || OWNER[j] == 0 || !pathNode[0][j]) continue;
+                        if (hoL > 0 && (S.s[i].len > hoL || S.s[j].len <= S.s[i].len)) continue;
+                        const int e = c - S.s[j].head();
+                        const int q = e == -STRIDE ? 0 : e == 1 ? 1 : e == STRIDE ? 2 : e == -1 ? 3 : -1;
+                        if (q < 0 || mv[j] == q || !(validMask(S, j) >> q & 1) || (float)(rnd() & 1023) >= hoP * 1024) continue;
+                        const int nd = pathNode[0][j];
+                        mv[j] = q, pathMove[0][j] = q;
+                        if (!MD) {
+                            if (!pool[nd].ch[q]) pool[nd].ch[q] = newNode();
+                            cur[j] = pool[nd].ch[q];
+                        }
+                    }
+                }
             PROF_END(P_SELECT);
             int hd0[MAXS], ln0[MAXS];
             if (passOn)
