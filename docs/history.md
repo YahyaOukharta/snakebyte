@@ -35,6 +35,7 @@ maps, both seats). Self-play overstates arena gains.
 | v1.19 | v1.17 + the last-apple rule (`LAST_AP`) + phase weights for the in-tree prior before the endgame (`PRIOR_T3`) | agreement _H3R0_ 64.44, sZoom 66.41; the rule level in 3,200 self-play games | **34.95** (pooled and standardised 68.8%, as v1.11 and v1.17) | 3 |
 | v1.20 | v1.19 + the pass charge of v1.12 (`PRIOR_PASS` 1.5), which had been reverted on one arena run inside the noise | Kaggle real time on v1.19 settings: +22, +12; with net n4c +25, +10, +21, +20 (**+17 ± 10**, 2,400 games). Net n4c alone on these settings: −13, +10, +5, +1 (its gain is gone with the phase priors) | **35.26** (pooled and standardised 70.1% ± 3.6, 36% against the top two in 40 games) | 3 |
 | v1.21 | v1.20 + the end point of the second SPSA run (UCB_C 0.67, EV_K 11.2, EV_N1 12.0, EV_N2 25.8, EV_LOSS 0.17, EV_TEMPO 0.027, NET_A 2.73, D_STEP2 320 and twelve smaller moves). CodinGame gives the bot about 3,600 iterations a turn (median of 7,000 logged turns), so the fixed 3,500-iteration arena is the yardstick | vs v1.20 at 3,500 iterations: local +47, +42, +37 (**+42 ± 24**), Kaggle x86 **+58 ± 31**; at 2,500 +65 ± 43; at 5,000 +23 ± 41; Kaggle real time 0 ± 17 | **36.67** (pooled and standardised 76.3% ± 3.6 against 69.6% ± 1.8 for v1.11; 38% against the top two, 83% against the next ten) | 3 |
+| v1.22 | v1.21 with the second depth step at 450 iterations (`D_STEP2` 320 → 450) | Kaggle x86 at 3,500 iterations, 400 games: **+34 ± 31** (250: −6) | running | |
 
 ## Measurements
 

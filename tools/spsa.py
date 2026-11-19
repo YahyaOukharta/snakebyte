@@ -19,6 +19,7 @@ P = {   # second run (2026-11-18): from the live values, with the terms added si
     "D_STEP2": (1000, 120, 200, 4000),
 }
 ap = argparse.ArgumentParser()
+if os.environ.get("SB_TABLE"): P = {k: tuple(v) for k, v in json.load(open(os.environ["SB_TABLE"])).items()}   # another table: JSON of name: [start, step, min, max]
 ap.add_argument("--batches", type=int, default=200)
 ap.add_argument("--maps", type=int, default=16)
 ap.add_argument("--iters", type=int, default=1000)

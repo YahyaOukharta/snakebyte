@@ -356,6 +356,12 @@ PARAM(LAST_AP, 0);        // root: my snakes do not eat the last apple when the 
 PARAM(OPP_POL, 0);        // share of the enemy snakes' moves in the tree drawn from the fitted preferences in place of their own UCB choice
 PARAM(FPU_ON, 0);         // first-play urgency: an untried move starts at the node's mean value + FPU instead of being tried at once
 PARAM(FPU, 0);
+PARAM(K_D, 1);            // multipliers on the fitted in-tree prior weights: distance to an apple, supported cell, up, down, onto a snake, straight on
+PARAM(K_SUP, 1);
+PARAM(K_UP, 1);
+PARAM(K_DN, 1);
+PARAM(K_SN, 1);
+PARAM(K_ST, 1);
 PARAM(PUCT, 0);           // > 0: the prior enters as PUCT x bias x sqrt(N) / (1 + n) instead of fading with bn / (bn + n)
 PARAM(FINAL_R, 0);        // > 0: the move played is the best mean among the moves with at least FINAL_R x the visits of the most visited
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
@@ -1494,6 +1500,8 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         if (root.napples >= 13) kD = -0.40f, kSup = 1.1f, kUp = 0.12f, kDn = -1.05f, kSn = 0.1f;
         else kD = -0.36f, kSup = 1.23f, kUp = -0.13f, kDn = -0.79f, kSn = 0.6f;
     }
+    kD *= (float)K_D, kSup *= (float)K_SUP, kUp *= (float)K_UP, kDn *= (float)K_DN, kSn *= (float)K_SN;
+    const float kSt = 0.49f * (float)K_ST;
     const bool sh = PRIOR_SH != 0;
     const float pTS = (float)PRIOR_TS;
     const float pTA = (float)PRIOR_TA, pTN = (float)(PRIOR_TN != 0 ? PRIOR_TN : PRIOR_N);
@@ -1609,7 +1617,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                     const int hd = S.s[i].head(), f = S.s[i].facing(), t0 = T[hd];
                     for (int q = 0; q < 4; q++) {
                         int c = hd + DELTA[q], dd = T[c] - t0;
-                        tb[q] = pT * (kD * (dd < -3 ? -3 : dd > 3 ? 3 : dd) + kSup * supc[c] + (q == f && (!sh || (q & 1)) ? 0.49f : 0) + (q == 0 ? kUp : q == 2 ? kDn : 0) + (S.occ[c] == APPLE ? pTA : 0) + (pTS != 0 && (S.occ[c + STRIDE] == APPLE || S.occ[c + STRIDE] >= SNAKE) ? pTS : 0) + (kSn != 0 && S.occ[c + STRIDE] >= SNAKE ? kSn : 0));
+                        tb[q] = pT * (kD * (dd < -3 ? -3 : dd > 3 ? 3 : dd) + kSup * supc[c] + (q == f && (!sh || (q & 1)) ? kSt : 0) + (q == 0 ? kUp : q == 2 ? kDn : 0) + (S.occ[c] == APPLE ? pTA : 0) + (pTS != 0 && (S.occ[c + STRIDE] == APPLE || S.occ[c + STRIDE] >= SNAKE) ? pTS : 0) + (kSn != 0 && S.occ[c + STRIDE] >= SNAKE ? kSn : 0));
                     }
                     bias = tb;
                 }
