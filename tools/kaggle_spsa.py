@@ -7,7 +7,8 @@
 SRC is a packed source that still reads its parameters from the environment (pack.py --keep).
 Every kernel runs its own chain from the same start with its own random signs and maps:
 theta+ plays theta- on MAPS maps with both seats at the real time budget, two games at once (--iters N: fixed iterations, four at once).
-The parameter table is the one of tools/spsa.py. SB_KP=2 selects the second account.
+The parameter table is the one of tools/spsa.py, or the JSON file named by SB_TABLE
+(name: [start, step, min, max]). SB_KP=2 selects the second account.
 """
 import glob, json, os, re, shutil, subprocess, sys, time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -50,6 +51,8 @@ def kg(*a):
 
 
 def table():
+    if os.environ.get("SB_TABLE"):                           # another table: a JSON file of name: [start, step, min, max]
+        return {k: tuple(v) for k, v in json.load(open(os.environ["SB_TABLE"])).items()}
     src = open(os.path.join(ROOT, "tools", "spsa.py")).read()
     return eval(re.search(r"^P = (\{.*?^\})", src, re.S | re.M).group(1))
 
