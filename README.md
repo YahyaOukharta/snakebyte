@@ -36,7 +36,7 @@ Started at rank 328 of 394 in Legend (17.91) with the March 2026 contest bot
 | v1.17, second run | 34.52 | 3 |
 | v1.19: v1.17 + last-apple rule + phase weights before the endgame | 34.95 | 3 |
 | v1.20: v1.19 + pass charge | 35.26 | 3 |
-| v1.21: v1.20 + second joint retune of 20 values (+42 at 3,500 iterations) | running | |
+| v1.21: v1.20 + second joint retune of 20 values (+42 at 3,500 iterations) | **36.67** | 3 |
 
 The arena's first two (_H3R0_ 36.9, sZoom 36.8) are five points clear of the third (31.9).
 
