@@ -368,6 +368,10 @@ PARAM(TRAP_FF, 0);        // root: a move into a region with fewer free cells th
 PARAM(TRAP_D, 0);
 PARAM(DMIX_N, 0);         // every DMIX_N-th simulation runs DMIX_ADD turns deeper: the long look that sees a snake shut in (0 = off)
 PARAM(DMIX_ADD, 10);
+PARAM(PROBE, 0);          // root safety probe: this many deep rollouts per move of each of my snakes (0 = off) ...
+PARAM(PROBE_D, 20);       // ... of this many turns, every snake moving at random among its legal moves;
+PARAM(PROBE_L, 5);        // ... for snakes at least this long;
+PARAM(PROBE_M, 2);        // ... a move whose best rollout (apples eaten - parts lost) is negative and this much below the best move's is not played
 PARAM(PUCT, 0);           // > 0: the prior enters as PUCT x bias x sqrt(N) / (1 + n) instead of fading with bn / (bn + n)
 PARAM(FINAL_R, 0);        // > 0: the move played is the best mean among the moves with at least FINAL_R x the visits of the most visited
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
@@ -1607,6 +1611,38 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
                 int m = safe ? safe : valid, keep = m;
                 for (int d = 0; d < 4; d++)
                     if ((m >> d & 1) && root.occ[root.s[i].head() + DELTA[d]] == APPLE) keep &= ~(1 << d);
+                if (keep) safe = keep;
+            }
+        }
+        if (PROBE > 0 && root.s[i].len >= PROBE_L) {         // can the snake get out again? Only what happens to it in its best rollout counts
+            int m = safe ? safe : valid, best[4] = {-99, -99, -99, -99}, top = -99, keep = 0;
+            if (__builtin_popcount(m) > 1) {
+                for (int d = 0; d < 4; d++) {
+                    if (!(m >> d & 1)) continue;
+                    for (int r = 0; r < (int)PROBE && best[d] < 0; r++) {
+                        State T = root;
+                        int sc = 0;
+                        for (int t = 0; t < (int)PROBE_D && T.s[i].alive && !T.terminal(); t++) {
+                            int8_t mm[MAXS];
+                            for (int j = 0; j < NS; j++) {
+                                mm[j] = 0;
+                                if (!T.s[j].alive) continue;
+                                int vm = validMask(T, j), q;
+                                if (j == i && t == 0) { mm[j] = d; continue; }
+                                if (!vm) { mm[j] = T.s[j].facing(); continue; }
+                                do q = rnd() & 3; while (!(vm >> q & 1));
+                                mm[j] = q;
+                            }
+                            const int l0 = T.s[i].len, ate = T.occ[T.s[i].head() + DELTA[mm[i]]] == APPLE;
+                            T.step(mm);
+                            sc += ate - (T.s[i].alive ? l0 + ate - T.s[i].len : l0);
+                        }
+                        if (sc > best[d]) best[d] = sc;
+                    }
+                    if (best[d] > top) top = best[d];
+                }
+                for (int d = 0; d < 4; d++)
+                    if ((m >> d & 1) && !(best[d] < 0 && best[d] <= top - (int)PROBE_M)) keep |= 1 << d;
                 if (keep) safe = keep;
             }
         }
