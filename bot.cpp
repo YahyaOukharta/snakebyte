@@ -366,6 +366,8 @@ PARAM(HO_P, 0);           // head-on at the root: share of the simulations in wh
 PARAM(HO_L, 0);           // ... only for my snakes of at most this length against a longer enemy (0 = every pair)
 PARAM(TRAP_FF, 0);        // root: a move into a region with fewer free cells than TRAP_FF x the snake's length is not played while another move has room (0 = off)
 PARAM(TRAP_D, 0);
+PARAM(DMIX_N, 0);         // every DMIX_N-th simulation runs DMIX_ADD turns deeper: the long look that sees a snake shut in (0 = off)
+PARAM(DMIX_ADD, 10);
 PARAM(PUCT, 0);           // > 0: the prior enters as PUCT x bias x sqrt(N) / (1 + n) instead of fading with bn / (bn + n)
 PARAM(FINAL_R, 0);        // > 0: the move played is the best mean among the moves with at least FINAL_R x the visits of the most visited
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
@@ -1113,6 +1115,7 @@ static int copyTree(int o, float f) {
 static int lastIters, lastDepth, lastSims;
 static double lastScore;         // mean shared value of the last search, player 0's view, in (-1, 1)
 static long fixedIters = 0;      // LOCAL: iterations per move instead of time
+static long fixedSims = 0;       // LOCAL (SB_SIMS): simulated turns per move instead, the fair budget between builds of different depth
 
 #ifdef LOCAL   // experiments that are off in the submitted bot are compiled for the local tools only
 // ───────────────────────────── root safety ─────────────────────────────
@@ -1538,6 +1541,7 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
     const float kSt = 0.49f * (float)K_ST;
     const float hoP = (float)HO_P;
     const int hoL = (int)HO_L;
+    const int dmixN = (int)DMIX_N, dmixAdd = (int)DMIX_ADD;
     const bool sh = PRIOR_SH != 0;
     const float pTS = (float)PRIOR_TS;
     const float pTA = (float)PRIOR_TA, pTN = (float)(PRIOR_TN != 0 ? PRIOR_TN : PRIOR_N);
@@ -1635,12 +1639,14 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         rootMask[i] = safe ? safe : valid;
     }
     for (;;) {
-        if (fixedIters) { if (iters >= fixedIters) break; }
+        if (fixedSims) { if (sims >= fixedSims) break; }
+        else if (fixedIters) { if (iters >= fixedIters) break; }
         else if ((iters & 15) == 0 &&
                  chrono::duration<double, milli>(chrono::steady_clock::now() - t0).count() > budgetMs) break;
         if (poolN > POOL - 64 * MAXS) break;
         depth = iters < D_SW ? (int)(D_BASE + iters / D_STEP1) : (int)(D_BASE + D_SW / D_STEP1 + (iters - D_SW) / D_STEP2);
         if (depth > D_MAX) depth = (int)D_MAX;
+        if (dmixN > 0 && iters % dmixN == dmixN - 1) depth += dmixAdd;
         if (depth > 60) depth = 60;
         PROF_START();
         State S = root;
@@ -1866,6 +1872,7 @@ int main() {
 #endif
 #ifdef LOCAL
     if (getenv("SB_ITERS")) fixedIters = atol(getenv("SB_ITERS"));
+    if (getenv("SB_SIMS")) fixedSims = atol(getenv("SB_SIMS")), fixedIters = fixedIters ? fixedIters : 1;
     if (getenv("SB_SEED")) rngS ^= strtoull(getenv("SB_SEED"), 0, 10) * 0x2545F4914F6CDD1DULL;
     if (getenv("SB_NET")) loadNet(getenv("SB_NET"));
 #endif
