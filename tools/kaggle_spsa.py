@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """SPSA chains in real time on Kaggle CPU kernels (x86, like CodinGame).
 
-  kaggle_spsa.py push NAME SRC [--chains 5] [--hours 9] [--maps 8] [--fixed SB_X=v,...] [--start SB_X=v,...]
+  kaggle_spsa.py push NAME SRC [--chains 5] [--hours 9] [--maps 8] [--iters N] [--fixed SB_X=v,...] [--start SB_X=v,...]
   kaggle_spsa.py status NAME
   kaggle_spsa.py fetch NAME          every chain's last state and the mean over the chains
 SRC is a packed source that still reads its parameters from the environment (pack.py --keep).
 Every kernel runs its own chain from the same start with its own random signs and maps:
-theta+ plays theta- on MAPS maps with both seats at the real time budget, two games at once.
+theta+ plays theta- on MAPS maps with both seats at the real time budget, two games at once (--iters N: fixed iterations, four at once).
 The parameter table is the one of tools/spsa.py. SB_KP=2 selects the second account.
 """
 import glob, json, os, re, shutil, subprocess, sys, time
@@ -18,7 +18,7 @@ SFX = "" if PROF == "1" else f"_p{PROF}"
 ENV = {**os.environ, "KAGGLE_API_TOKEN": open(os.path.expanduser(f"~/.kaggle/access_token{_SUF}")).read().strip(),
        "PATH": os.path.expanduser("~/.local/bin") + ":" + os.environ["PATH"]}
 SCRIPT = '''import glob, json, os, random, re, shutil, subprocess, time
-SRC, P, START, FIXED, MAPS, HOURS, CHAIN, LR = %r, %r, %r, %r, %d, %f, %d, %f
+SRC, P, START, FIXED, MAPS, HOURS, CHAIN, LR, ITERS = %r, %r, %r, %r, %d, %f, %d, %f, %d
 d = os.path.dirname(glob.glob("/kaggle/input/**/referee.cpp", recursive=True)[0])
 os.makedirs("/tmp/src/tools", exist_ok=True)
 shutil.copy(d + "/referee.cpp", "/tmp/src/tools/referee.cpp")
@@ -34,8 +34,8 @@ while time.time() - t0 < HOURS * 3600:
     def spec(sign):
         v = {n: min(max(theta[n] + sign * s[n] * P[n][1], P[n][2]), P[n][3]) for n in P}
         return "/tmp/a@" + ",".join("SB_%%s=%%.6g" %% (n, v[n]) for n in P) + ("," + FIXED if FIXED else "")
-    out = subprocess.check_output(["/tmp/referee", spec(1), spec(-1), "-g", str(MAPS), "-j", "2",
-                                   "-s", str(1000000 * CHAIN + 1000 * k)], text=True).strip().splitlines()[-1]
+    out = subprocess.check_output(["/tmp/referee", spec(1), spec(-1), "-g", str(MAPS), "-s", str(1000000 * CHAIN + 1000 * k)] +
+                                  (["-j", "4", "-n", str(ITERS)] if ITERS else ["-j", "2"]), text=True).strip().splitlines()[-1]
     score = float(re.search(r"\\(([\\d.]+)%%\\)", out).group(1)) / 100
     lr = LR / (1 + k / 150)
     for n in P:
@@ -58,7 +58,7 @@ def kv(s):
     return {a.split("=")[0].replace("SB_", ""): float(a.split("=")[1]) for a in s.split(",") if a}
 
 
-def push(name, src, chains, hours, maps, fixed, start, lr):
+def push(name, src, chains, hours, maps, fixed, start, lr, iters):
     d = os.path.join(ROOT, "kaggle", "matchsrc" + SFX)
     os.makedirs(d, exist_ok=True)
     new = not os.path.exists(os.path.join(d, "dataset-metadata.json"))
@@ -79,7 +79,7 @@ def push(name, src, chains, hours, maps, fixed, start, lr):
         k = os.path.join(ROOT, "kaggle", f"s{SFX}_{name}_{i}")
         os.makedirs(k, exist_ok=True)
         chain = i + (100 if SFX else 0) + sum(map(ord, name))
-        open(os.path.join(k, "spsa.py"), "w").write(SCRIPT % (dst, table(), kv(start), fixed, maps, hours, chain, lr))
+        open(os.path.join(k, "spsa.py"), "w").write(SCRIPT % (dst, table(), kv(start), fixed, maps, hours, chain, lr, iters))
         json.dump({"id": f"{USER}/sb-spsa-{name}-{i}", "title": f"sb-spsa-{name}-{i}", "code_file": "spsa.py",
                    "language": "python", "kernel_type": "script", "is_private": True, "enable_gpu": False,
                    "enable_internet": False, "dataset_sources": [f"{USER}/sb-match"]}, open(os.path.join(k, "kernel-metadata.json"), "w"))
@@ -127,10 +127,10 @@ def fetch(name):
 if __name__ == "__main__":
     c, name, rest = sys.argv[1], sys.argv[2], sys.argv[3:]
     if c == "push":
-        opt = {"--chains": "5", "--hours": "9", "--maps": "8", "--fixed": "", "--start": "", "--lr": "1.5"}
+        opt = {"--chains": "5", "--hours": "9", "--maps": "8", "--fixed": "", "--start": "", "--lr": "1.5", "--iters": "0"}
         for o in list(opt):
             if o in rest:
                 j = rest.index(o); opt[o] = rest[j + 1]; del rest[j:j + 2]
-        push(name, rest[0], int(opt["--chains"]), float(opt["--hours"]), int(opt["--maps"]), opt["--fixed"], opt["--start"], float(opt["--lr"]))
+        push(name, rest[0], int(opt["--chains"]), float(opt["--hours"]), int(opt["--maps"]), opt["--fixed"], opt["--start"], float(opt["--lr"]), int(opt["--iters"]))
     elif c == "status": status(name)
     elif c == "fetch": fetch(name)
