@@ -10,11 +10,13 @@ the last line of an existing log.
 import argparse, json, os, random, re, subprocess
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # name: (start, step, min, max)
-P = {
-    "UCB_C": (0.7, 0.1, 0.1, 3), "EV_K": (6, 0.8, 1, 30), "EV_OWN": (0.25, 0.05, 0, 2), "EV_S1": (0.08, 0.015, 0, 0.5),
-    "EV_N1": (8, 1.5, 1, 30), "EV_S2": (0.015, 0.005, 0, 0.2), "EV_N2": (20, 4, 1, 60), "EV_ELEV": (0.01, 0.01, -0.2, 0.2),
-    "EV_SELF": (1.0, 0.2, 0, 5), "EV_MEAN": (0.5, 0.12, 0, 1), "EV_LOSS": (0.05, 0.05, -1, 1), "EV_WIN": (4, 1, 0, 20),
-    "NET_A": (2.0, 0.4, 0, 10), "EV_ALIVE": (0.0, 0.3, -3, 3), "EV_UG": (0.0, 0.003, 0, 0.02),
+P = {   # second run (2026-11-18): from the live values, with the terms added since the first run
+    "UCB_C": (0.735, 0.07, 0.1, 3), "EV_K": (8.55, 0.8, 1, 30), "EV_OWN": (0.19, 0.04, 0, 2), "EV_S1": (0.02, 0.006, 0, 0.5),
+    "EV_N1": (6, 1.2, 1, 30), "EV_S2": (0.045, 0.01, 0, 0.2), "EV_N2": (20, 3, 1, 60), "EV_ELEV": (0.04, 0.015, -0.2, 0.2),
+    "EV_SELF": (0.642, 0.1, 0, 5), "EV_MEAN": (0.5, 0.08, 0, 1), "EV_LOSS": (0.057, 0.03, -1, 1), "EV_WIN": (8.69, 1, 0, 20),
+    "NET_A": (2.18, 0.3, 0, 10), "EV_ALIVE": (1.39, 0.25, -3, 3), "EV_UG": (0.0065, 0.002, 0, 0.02),
+    "EV_VOR": (0.25, 0.05, 0, 2), "EV_TEMPO": (0.1, 0.025, 0, 1), "EV_SPACE": (1, 0.2, 0, 5), "NET_MIX": (1.0, 0.12, 0, 3),
+    "D_STEP2": (1000, 120, 200, 4000),
 }
 ap = argparse.ArgumentParser()
 ap.add_argument("--batches", type=int, default=200)
@@ -22,6 +24,7 @@ ap.add_argument("--maps", type=int, default=16)
 ap.add_argument("--iters", type=int, default=1000)
 ap.add_argument("--jobs", type=int, default=7)
 ap.add_argument("--net", default="")
+ap.add_argument("--fixed", default="", help="parameters both sides share, e.g. SB_PRIOR_PH=1,SB_PRIOR_TL=1")
 ap.add_argument("--lr", type=float, default=1.5, help="step per batch, in units of the parameter's step, for a 100%% score")
 ap.add_argument("--log", default=os.path.join(ROOT, "league", "spsa.jsonl"))
 a = ap.parse_args()
@@ -39,7 +42,7 @@ for k in range(k0, k0 + a.batches):
     def spec(sign):
         v = {n: min(max(theta[n] + sign * d[n] * P[n][1], P[n][2]), P[n][3]) for n in P}
         s = ",".join(f"SB_{n}={v[n]:.6g}" for n in P)
-        return bot + "@" + s + (",SB_NET=" + a.net if a.net else "")
+        return bot + "@" + s + (",SB_NET=" + a.net if a.net else "") + ("," + a.fixed if a.fixed else "")
     out = subprocess.check_output([os.path.join(ROOT, "build", "referee"), spec(1), spec(-1), "-g", str(a.maps), "-j", str(a.jobs),
                                    "-n", str(a.iters), "-s", str(100000 + 1000 * k)], text=True).strip().splitlines()[-1]
     score = float(re.search(r"\(([\d.]+)%\)", out).group(1)) / 100

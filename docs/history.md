@@ -33,7 +33,7 @@ maps, both seats). Self-play overstates arena gains.
 | v1.18 | v1.17 + root prior weight 0.05 → 0.08 | agreement _H3R0_ 64.27 → 64.55, sZoom 66.15 → 66.99; phase switch at 10 / 14 apples in place of 6: 64.40, 66.33 / 64.48, 66.15 (no difference) | **34.09** (+91 −53 =15, 61.9%; top two +5 −29). The second low run of weight 0.08 after v1.14: dropped | 3 |
 | v1.17, second run | resubmitted after v1.18 | | **34.52** (+96 −49 =14, 64.8%; top two +7 −21). Two runs of v1.17: 35.39, 34.52; four of v1.11: mean 35.3. Not distinguishable | 3 |
 | v1.19 | v1.17 + the last-apple rule (`LAST_AP`) + phase weights for the in-tree prior before the endgame (`PRIOR_T3`) | agreement _H3R0_ 64.44, sZoom 66.41; the rule level in 3,200 self-play games | **34.95** (pooled and standardised 68.8%, as v1.11 and v1.17) | 3 |
-| v1.20 | v1.19 + the pass charge of v1.12 (`PRIOR_PASS` 1.5), which had been reverted on one arena run inside the noise | Kaggle real time on v1.19 settings: +22, +12; with net n4c +25, +10, +21, +20 (**+17 ± 10**, 2,400 games). Net n4c alone on these settings: −13, +10, +5, +1 (its gain is gone with the phase priors) | running | |
+| v1.20 | v1.19 + the pass charge of v1.12 (`PRIOR_PASS` 1.5), which had been reverted on one arena run inside the noise | Kaggle real time on v1.19 settings: +22, +12; with net n4c +25, +10, +21, +20 (**+17 ± 10**, 2,400 games). Net n4c alone on these settings: −13, +10, +5, +1 (its gain is gone with the phase priors) | **35.26** (pooled and standardised 70.1% ± 3.6, 36% against the top two in 40 games) | 3 |
 
 ## Measurements
 
