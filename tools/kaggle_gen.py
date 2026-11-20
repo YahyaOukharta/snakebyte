@@ -6,7 +6,8 @@
   kaggle_gen.py fetch TAG                  -> data/TAG_<kernel>_<process>.bin
 GAMES is per process. Kernel i, process j uses seed SEED + 100000 * (4 * i + j): give every
 generation its own SEED block. NET (a file in tools/nets/) makes the generator play with that
-net. SB_KP=2 selects the second account.
+net. SB_GENENV=SB_X=v,... sets engine parameters of the generator. SB_KP=2 selects the second
+account.
 """
 import glob, json, os, re, shutil, subprocess, sys, time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -17,13 +18,14 @@ SFX = "" if PROF == "1" else f"_p{PROF}"
 ENV = {**os.environ, "KAGGLE_API_TOKEN": open(os.path.expanduser(f"~/.kaggle/access_token{_SUF}")).read().strip(),
        "PATH": os.path.expanduser("~/.local/bin") + ":" + os.environ["PATH"]}
 SCRIPT = '''import glob, os, shutil, subprocess
-GAMES, ITERS, SEED, NET, EPS = %d, %d, %d, %r, %r
+GAMES, ITERS, SEED, NET, EPS, EXTRA = %d, %d, %d, %r, %r, %r
 d = os.path.dirname(glob.glob("/kaggle/input/**/referee.cpp", recursive=True)[0])
 os.makedirs("/tmp/src/tools", exist_ok=True)
 shutil.copy(d + "/referee.cpp", "/tmp/src/tools/referee.cpp")
 shutil.copy(d + "/bot.cpp", "/tmp/src/bot.cpp")
 subprocess.check_call(["g++", "-O3", "-std=c++17", "-march=native", "-o", "/tmp/referee", "/tmp/src/tools/referee.cpp"])
 env = dict(os.environ)
+env.update(dict(kv.split("=") for kv in EXTRA.split(",") if kv))
 if NET: env["SB_NET"] = d + "/" + NET
 ps = [subprocess.Popen(["/tmp/referee", "--gen", str(GAMES), str(ITERS), str(SEED + 100000 * j), "/kaggle/working/g_%%d.bin" %% j, EPS], env=env) for j in range(4)]
 print("DONE", [p.wait() for p in ps], [os.path.getsize("/kaggle/working/g_%%d.bin" %% j) for j in range(4)], flush=True)
@@ -54,7 +56,7 @@ def push(tag, kernels, games, seed, iters, net, eps):
         k = os.path.join(ROOT, "kaggle", f"g{SFX}_{tag}_{i + 1}")
         os.makedirs(k, exist_ok=True)
         base = seed + 100000 * 4 * (i + (0 if PROF == "1" else 50))      # the second account gets its own range
-        open(os.path.join(k, "gen.py"), "w").write(SCRIPT % (games, iters, base, net or "", str(eps)))
+        open(os.path.join(k, "gen.py"), "w").write(SCRIPT % (games, iters, base, net or "", str(eps), os.environ.get("SB_GENENV", "")))
         json.dump({"id": f"{USER}/sb-gen-{tag}-{i + 1}", "title": f"sb-gen-{tag}-{i + 1}", "code_file": "gen.py", "language": "python",
                    "kernel_type": "script", "is_private": True, "enable_gpu": False, "enable_internet": False,
                    "dataset_sources": [f"{USER}/sb-gen"]}, open(os.path.join(k, "kernel-metadata.json"), "w"))
