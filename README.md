@@ -41,7 +41,8 @@ Started at rank 328 of 394 in Legend (17.91) with the March 2026 contest bot
 | v1.23: v1.21 + end point of five tuning chains on Kaggle | 35.39 | 3 |
 | v1.24: v1.21 settings, moves sent before debug output | 35.24 | 3 |
 | v1.25: v1.21 + safety probe at the root (deep random rollouts drop moves that always lose parts) | 34.64 | 3 |
-| v1.26: v1.25 with 44 ms a turn instead of 38 | running | |
+| v1.26: v1.25 with 44 ms a turn instead of 38 (10% of games lost on time) | 35.33 | 3 |
+| v1.27: 41 ms a turn | running | |
 
 The arena's first two (_H3R0_ 36.9, sZoom 36.8) are five points clear of the third (31.9).
 
