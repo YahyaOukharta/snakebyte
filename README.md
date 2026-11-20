@@ -39,7 +39,8 @@ Started at rank 328 of 394 in Legend (17.91) with the March 2026 contest bot
 | v1.21: v1.20 + second joint retune of 20 values (+42 at 3,500 iterations) | **36.67** | 3 |
 | v1.22: v1.21 + slower second depth step | 35.09 | 3 |
 | v1.23: v1.21 + end point of five tuning chains on Kaggle | 35.39 | 3 |
-| v1.24: v1.21 settings, moves sent before debug output | running | |
+| v1.24: v1.21 settings, moves sent before debug output | 35.24 | 3 |
+| v1.25: v1.21 + safety probe at the root (deep random rollouts drop moves that always lose parts) | running | |
 
 The arena's first two (_H3R0_ 36.9, sZoom 36.8) are five points clear of the third (31.9).
 

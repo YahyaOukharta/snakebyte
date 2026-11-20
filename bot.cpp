@@ -356,24 +356,14 @@ PARAM(LAST_AP, 0);        // root: my snakes do not eat the last apple when the 
 PARAM(OPP_POL, 0);        // share of the enemy snakes' moves in the tree drawn from the fitted preferences in place of their own UCB choice
 PARAM(FPU_ON, 0);         // first-play urgency: an untried move starts at the node's mean value + FPU instead of being tried at once
 PARAM(FPU, 0);
-PARAM(K_D, 1);            // multipliers on the fitted in-tree prior weights: distance to an apple, supported cell, up, down, onto a snake, straight on
-PARAM(K_SUP, 1);
-PARAM(K_UP, 1);
-PARAM(K_DN, 1);
-PARAM(K_SN, 1);
-PARAM(K_ST, 1);
 PARAM(HO_P, 0);           // head-on at the root: share of the simulations in which an enemy head next to the cell my snake enters steps into it too
 PARAM(HO_L, 0);           // ... only for my snakes of at most this length against a longer enemy (0 = every pair)
 PARAM(TRAP_FF, 0);        // root: a move into a region with fewer free cells than TRAP_FF x the snake's length is not played while another move has room (0 = off)
 PARAM(TRAP_D, 0);
-PARAM(DMIX_N, 0);         // every DMIX_N-th simulation runs DMIX_ADD turns deeper: the long look that sees a snake shut in (0 = off)
-PARAM(DMIX_ADD, 10);
 PARAM(PROBE, 0);          // root safety probe: this many deep rollouts per move of each of my snakes (0 = off) ...
 PARAM(PROBE_D, 20);       // ... of this many turns, every snake moving at random among its legal moves;
 PARAM(PROBE_L, 5);        // ... for snakes at least this long;
 PARAM(PROBE_M, 2);        // ... a move whose best rollout (apples eaten - parts lost) is negative and this much below the best move's is not played
-PARAM(PUCT, 0);           // > 0: the prior enters as PUCT x bias x sqrt(N) / (1 + n) instead of fading with bn / (bn + n)
-PARAM(FINAL_R, 0);        // > 0: the move played is the best mean among the moves with at least FINAL_R x the visits of the most visited
 PARAM(PRIOR_E, 1);         // the root prior of the enemy's snakes is multiplied by this: for them the prior is a prediction, not a hint
 PARAM(PRIOR_PASS, 0);     // root prior: taken off the score of a move after which the head is where it was (up and fall back)
 PARAM(PRIOR_SH, 0);       // in-tree prior: 1 = "straight on" counts for sideways moves only (straight up is how a snake stands still)
@@ -1064,8 +1054,7 @@ static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t
     __m128 q = _mm_add_ps(_mm_mul_ps(_mm_mul_ps(_mm_loadu_ps(nd.w), _mm_set1_ps(sign)), _mm_rcp_ps(n)),
                           _mm_mul_ps(_mm_set1_ps(e), _mm_rsqrt_ps(n)));
     if (bias)                                                // a prior on the moves that fades as they are visited: bias x bn / (bn + n)
-        q = PUCT > 0 ? _mm_add_ps(q, _mm_div_ps(_mm_mul_ps(_mm_loadu_ps(bias), _mm_set1_ps((float)PUCT * sqrtf((float)nd.N))), _mm_add_ps(_mm_set1_ps(1), n)))
-                     : _mm_add_ps(q, _mm_div_ps(_mm_mul_ps(_mm_loadu_ps(bias), _mm_set1_ps(bn)), _mm_add_ps(_mm_set1_ps(bn), n)));
+        q = _mm_add_ps(q, _mm_div_ps(_mm_mul_ps(_mm_loadu_ps(bias), _mm_set1_ps(bn)), _mm_add_ps(_mm_set1_ps(bn), n)));
     __m128 jit = _mm_add_ps(_mm_set1_ps(1e6f), _mm_cvtepi32_ps(_mm_set_epi32(p3, p2, p1, p0)));
     if (FPU_ON && nd.N > 0) {                                // first-play urgency: an untried move is worth the node's mean so far plus FPU, not infinity
         float sw = nd.w[0] + nd.w[1] + nd.w[2] + nd.w[3];
@@ -1087,7 +1076,7 @@ static inline int selectMove(const Node &nd, int mask, float sign, const uint8_t
     for (int d = 0; d < 4; d++) {
         float q = !(mask >> d & 1) ? -1e9f
                   : nd.n[d] == 0 ? (fpu ? fp0 + (float)pr[d] * 1e-7f + (bias ? bias[d] : 0) : 1e6f + (float)pr[d])
-                  : sign * nd.w[d] / nd.n[d] + e / sqrtf(nd.n[d]) + (bias ? (PUCT > 0 ? bias[d] * (float)PUCT * sqrtf((float)nd.N) / (1 + nd.n[d]) : bias[d] * bn / (bn + nd.n[d])) : 0);
+                  : sign * nd.w[d] / nd.n[d] + e / sqrtf(nd.n[d]) + (bias ? bias[d] * bn / (bn + nd.n[d]) : 0);
         if (q > bestV) bestV = q, best = d;
     }
     return best;
@@ -1541,11 +1530,9 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         if (root.napples >= 13) kD = -0.40f, kSup = 1.1f, kUp = 0.12f, kDn = -1.05f, kSn = 0.1f;
         else kD = -0.36f, kSup = 1.23f, kUp = -0.13f, kDn = -0.79f, kSn = 0.6f;
     }
-    kD *= (float)K_D, kSup *= (float)K_SUP, kUp *= (float)K_UP, kDn *= (float)K_DN, kSn *= (float)K_SN;
-    const float kSt = 0.49f * (float)K_ST;
+    const float kSt = 0.49f;
     const float hoP = (float)HO_P;
     const int hoL = (int)HO_L;
-    const int dmixN = (int)DMIX_N, dmixAdd = (int)DMIX_ADD;
     const bool sh = PRIOR_SH != 0;
     const float pTS = (float)PRIOR_TS;
     const float pTA = (float)PRIOR_TA, pTN = (float)(PRIOR_TN != 0 ? PRIOR_TN : PRIOR_N);
@@ -1682,7 +1669,6 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         if (poolN > POOL - 64 * MAXS) break;
         depth = iters < D_SW ? (int)(D_BASE + iters / D_STEP1) : (int)(D_BASE + D_SW / D_STEP1 + (iters - D_SW) / D_STEP2);
         if (depth > D_MAX) depth = (int)D_MAX;
-        if (dmixN > 0 && iters % dmixN == dmixN - 1) depth += dmixAdd;
         if (depth > 60) depth = 60;
         PROF_START();
         State S = root;
@@ -1810,11 +1796,6 @@ static void search(const State &root, double budgetMs, int8_t *out, const int8_t
         float bn = -1;
         for (int d = 0; d < 4; d++)
             if (x.n[d] > bn) bn = x.n[d], best = d;
-        if (FINAL_R > 0) {
-            float bq = -1e9f, sg = OWNER[i] == 0 ? 1.f : -1.f;
-            for (int d = 0; d < 4; d++)
-                if (x.n[d] > 0 && x.n[d] >= (float)FINAL_R * bn && sg * x.w[d] / x.n[d] > bq) bq = sg * x.w[d] / x.n[d], best = d;
-        }
         out[i] = best;
     }
     lastIters = iters, lastDepth = depth, lastSims = sims;
