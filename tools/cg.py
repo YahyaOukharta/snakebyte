@@ -40,7 +40,7 @@ def call(path, body=None, raw=False):
 
 
 def test(src, opp="default", replay=None, ide=False):
-    body = {"language": "C++", "code": open(src, encoding="utf-8").read()}
+    body = {"language": os.environ.get("SB_LANG", "C++"), "code": open(src, encoding="utf-8").read()}
     if ide:   # also make this the code of the CodinGame IDE (overwrites what is there)
         body["overwrite_ide_code"] = True
     if replay:
@@ -73,7 +73,7 @@ def main():
         rest = [x for x in a[1:] if x != "--replay" and x != rep]
         test(rest[0], rest[1] if len(rest) > 1 else "default", rep)
     elif a[0] == "submit":
-        r = call(f"/puzzles/{PUZ}/submissions", {"language": "C++", "code": open(a[1], encoding="utf-8").read()})
+        r = call(f"/puzzles/{PUZ}/submissions", {"language": os.environ.get("SB_LANG", "C++"), "code": open(a[1], encoding="utf-8").read()})
         print(json.dumps({k: v for k, v in r.items() if k != "limits"}), r.get("limits", {}).get("submits"))
         test(a[1], "default", ide=True)   # mirror the submitted code into the IDE
     elif a[0] == "progress":
